@@ -1,0 +1,244 @@
+name: Ansible Deploy
+
+on:
+    push:
+        branches:
+            - main
+        paths:
+            - "ansible/**"
+    workflow_dispatch:
+        inputs:
+            environment:
+                description: "Environment to deploy"
+                required: true
+                type: choice
+                options:
+                    - dev
+                    - prod
+            playbook:
+                description: "Playbook to run"
+                required: true
+                type: choice
+                options:
+                    - guacamole
+                    - all
+            check_mode:
+                description: "Run in check mode (dry run)"
+                required: false
+                type: boolean
+                default: false
+
+permissions:
+    contents: read
+    id-token: write
+
+jobs:
+    ansible-deploy-dev:
+        name: Deploy to Dev Environment
+        runs-on: ubuntu-latest
+        if: |
+            (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+            (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+        permissions:
+            id-token: write
+            contents: read
+        environment:
+            name: development
+        defaults:
+            run:
+                working-directory: ansible
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Configure AWS Credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+                  aws-region: ${{ secrets.AWS_REGION }}
+                  role-session-name: GitHubActions-AnsibleDeploy-Dev
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+                  cache: "pip"
+
+            - name: Install Ansible and dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install ansible boto3 botocore
+
+            - name: Install Ansible Galaxy collections
+              run: ansible-galaxy collection install -r requirements.yml
+
+            - name: Setup SSH key
+              run: |
+                  mkdir -p ~/.ssh
+                  echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+                  chmod 600 ~/.ssh/id_rsa
+                  ssh-keyscan -H ${{ secrets.DEV_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+            - name: Get EC2 instances dynamically
+              id: get-hosts
+              run: |
+                  # Use AWS CLI to get EC2 instances with tag Environment=dev
+                  aws ec2 describe-instances \
+                    --filters "Name=tag:Environment,Values=dev" "Name=instance-state-name,Values=running" \
+                    --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==`Name`].Value|[0]]' \
+                    --output text > /tmp/hosts.txt
+
+                  echo "Found hosts:"
+                  cat /tmp/hosts.txt
+
+            - name: Create dynamic inventory
+              run: |
+                  cat > inventory/hosts.yml <<EOF
+                  all:
+                    children:
+                      guacamole:
+                        hosts:
+                  EOF
+
+                  # Add hosts from AWS query
+                  while read ip name; do
+                    if [[ "$name" =~ guacamole ]]; then
+                      echo "          $ip:" >> inventory/hosts.yml
+                    fi
+                  done < /tmp/hosts.txt
+
+                  echo "Generated inventory:"
+                  cat inventory/hosts.yml
+
+            - name: Run Ansible Playbook (Check Mode)
+              if: github.event.inputs.check_mode == 'true'
+              run: |
+                  PLAYBOOK="${{ github.event.inputs.playbook || 'guacamole' }}"
+                  ansible-playbook playbooks/${PLAYBOOK}.yml \
+                    -i inventory/hosts.yml \
+                    --check \
+                    --diff \
+                    -v
+
+            - name: Run Ansible Playbook
+              if: github.event.inputs.check_mode != 'true'
+              run: |
+                  PLAYBOOK="${{ github.event.inputs.playbook || 'guacamole' }}"
+                  ansible-playbook playbooks/${PLAYBOOK}.yml \
+                    -i inventory/hosts.yml \
+                    --diff \
+                    -v
+
+            - name: Deployment Summary
+              if: always()
+              run: |
+                  echo "### Ansible Deployment Summary" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "**Environment:** dev" >> $GITHUB_STEP_SUMMARY
+                  echo "**Playbook:** ${{ github.event.inputs.playbook || 'guacamole' }}" >> $GITHUB_STEP_SUMMARY
+                  echo "**Check Mode:** ${{ github.event.inputs.check_mode || 'false' }}" >> $GITHUB_STEP_SUMMARY
+                  echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+    ansible-deploy-prod:
+        name: Deploy to Prod Environment
+        runs-on: ubuntu-latest
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+        permissions:
+            id-token: write
+            contents: read
+        environment:
+            name: production
+        defaults:
+            run:
+                working-directory: ansible
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Configure AWS Credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  role-to-assume: ${{ secrets.PROD_AWS_ROLE_TO_ASSUME }}
+                  aws-region: ${{ secrets.AWS_REGION }}
+                  role-session-name: GitHubActions-AnsibleDeploy-Prod
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+                  cache: "pip"
+
+            - name: Install Ansible and dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install ansible boto3 botocore
+
+            - name: Install Ansible Galaxy collections
+              run: ansible-galaxy collection install -r requirements.yml
+
+            - name: Setup SSH key
+              run: |
+                  mkdir -p ~/.ssh
+                  echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+                  chmod 600 ~/.ssh/id_rsa
+                  ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+            - name: Get EC2 instances dynamically
+              id: get-hosts
+              run: |
+                  # Use AWS CLI to get EC2 instances with tag Environment=production
+                  aws ec2 describe-instances \
+                    --filters "Name=tag:Environment,Values=production" "Name=instance-state-name,Values=running" \
+                    --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==`Name`].Value|[0]]' \
+                    --output text > /tmp/hosts.txt
+
+                  echo "Found hosts:"
+                  cat /tmp/hosts.txt
+
+            - name: Create dynamic inventory
+              run: |
+                  cat > inventory/hosts.yml <<EOF
+                  all:
+                    children:
+                      guacamole:
+                        hosts:
+                  EOF
+
+                  # Add hosts from AWS query
+                  while read ip name; do
+                    if [[ "$name" =~ guacamole ]]; then
+                      echo "          $ip:" >> inventory/hosts.yml
+                    fi
+                  done < /tmp/hosts.txt
+
+                  echo "Generated inventory:"
+                  cat inventory/hosts.yml
+
+            - name: Run Ansible Playbook (Check Mode)
+              if: github.event.inputs.check_mode == 'true'
+              run: |
+                  PLAYBOOK="${{ github.event.inputs.playbook }}"
+                  ansible-playbook playbooks/${PLAYBOOK}.yml \
+                    -i inventory/hosts.yml \
+                    --check \
+                    --diff \
+                    -v
+
+            - name: Run Ansible Playbook
+              if: github.event.inputs.check_mode != 'true'
+              run: |
+                  PLAYBOOK="${{ github.event.inputs.playbook }}"
+                  ansible-playbook playbooks/${PLAYBOOK}.yml \
+                    -i inventory/hosts.yml \
+                    --diff \
+                    -v
+
+            - name: Deployment Summary
+              if: always()
+              run: |
+                  echo "### Ansible Deployment Summary" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "**Environment:** prod" >> $GITHUB_STEP_SUMMARY
+                  echo "**Playbook:** ${{ github.event.inputs.playbook }}" >> $GITHUB_STEP_SUMMARY
+                  echo "**Check Mode:** ${{ github.event.inputs.check_mode }}" >> $GITHUB_STEP_SUMMARY
+                  echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
