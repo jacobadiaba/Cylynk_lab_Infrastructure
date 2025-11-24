@@ -96,7 +96,7 @@ variable "existing_key_pair_name" {
   type        = string
   validation {
     condition     = trimspace(var.existing_key_pair_name) != ""
-    error_message = "existing_key_pair_name must be provided."
+    error_message = "Existing_key_pair_name must be provided."
   }
 }
 
