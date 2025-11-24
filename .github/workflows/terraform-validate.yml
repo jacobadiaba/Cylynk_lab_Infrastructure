@@ -138,7 +138,7 @@ jobs:
 
             - name: Terraform Plan
               id: plan
-              run: terraform plan -no-color -input=false
+              run: terraform plan -no-color -input=false -var-file=terraform.tfvars
               continue-on-error: true
 
             - name: Comment Plan Results
