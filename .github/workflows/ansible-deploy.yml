@@ -118,20 +118,26 @@ jobs:
 
       - name: Run Ansible Playbook (Check Mode)
         if: github.event.inputs.check_mode == 'true'
+        env:
+          GUACAMOLE_DB_PASSWORD: ${{ secrets.GUACAMOLE_DB_PASSWORD }}
         run: |
           PLAYBOOK="${{ github.event.inputs.playbook || 'guacamole' }}"
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
+            -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             --check \
             --diff \
             -v
 
       - name: Run Ansible Playbook
         if: github.event.inputs.check_mode != 'true'
+        env:
+          GUACAMOLE_DB_PASSWORD: ${{ secrets.GUACAMOLE_DB_PASSWORD }}
         run: |
           PLAYBOOK="${{ github.event.inputs.playbook || 'guacamole' }}"
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
+            -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             --diff \
             -v
 
@@ -228,20 +234,26 @@ jobs:
 
       - name: Run Ansible Playbook (Check Mode)
         if: github.event.inputs.check_mode == 'true'
+        env:
+          GUACAMOLE_DB_PASSWORD: ${{ secrets.PROD_GUACAMOLE_DB_PASSWORD }}
         run: |
           PLAYBOOK="${{ github.event.inputs.playbook }}"
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
+            -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             --check \
             --diff \
             -v
 
       - name: Run Ansible Playbook
         if: github.event.inputs.check_mode != 'true'
+        env:
+          GUACAMOLE_DB_PASSWORD: ${{ secrets.PROD_GUACAMOLE_DB_PASSWORD }}
         run: |
           PLAYBOOK="${{ github.event.inputs.playbook }}"
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
+            -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             --diff \
             -v
 
