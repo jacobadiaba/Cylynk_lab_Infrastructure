@@ -136,9 +136,46 @@ jobs:
             - name: Terraform Init
               run: terraform init
 
+            - name: Create terraform.tfvars from secrets
+              run: |
+                  cat > terraform.tfvars <<EOF
+                  project_name                  = "${{ secrets.TF_VAR_PROJECT_NAME }}"
+                  aws_region                    = "${{ secrets.TF_VAR_AWS_REGION }}"
+                  owner                         = "${{ secrets.TF_VAR_OWNER }}"
+                  cost_center                   = "${{ secrets.TF_VAR_COST_CENTER }}"
+                  vpc_cidr                      = "${{ secrets.TF_VAR_VPC_CIDR }}"
+                  management_subnet_cidr        = "${{ secrets.TF_VAR_MANAGEMENT_SUBNET_CIDR }}"
+                  attackbox_subnet_cidr         = "${{ secrets.TF_VAR_ATTACKBOX_SUBNET_CIDR }}"
+                  student_labs_cidr             = "${{ secrets.TF_VAR_STUDENT_LABS_CIDR }}"
+                  student_lab_subnet_count      = ${{ secrets.TF_VAR_STUDENT_LAB_SUBNET_COUNT }}
+                  enable_nat_gateway            = ${{ secrets.TF_VAR_ENABLE_NAT_GATEWAY }}
+                  enable_flow_logs              = ${{ secrets.TF_VAR_ENABLE_FLOW_LOGS }}
+                  enable_vpc_endpoints          = ${{ secrets.TF_VAR_ENABLE_VPC_ENDPOINTS }}
+                  allowed_ssh_cidr              = "${{ secrets.TF_VAR_ALLOWED_SSH_CIDR }}"
+                  vpn_port                      = ${{ secrets.TF_VAR_VPN_PORT }}
+                  vpn_subnet_cidr               = "${{ secrets.TF_VAR_VPN_SUBNET_CIDR }}"
+                  existing_key_pair_name        = "${{ secrets.TF_VAR_KEY_PAIR_NAME }}"
+                  guacamole_instance_type       = "${{ secrets.TF_VAR_GUACAMOLE_INSTANCE_TYPE }}"
+                  guacamole_domain_name         = "${{ secrets.TF_VAR_GUACAMOLE_DOMAIN_NAME }}"
+                  enable_lets_encrypt           = ${{ secrets.TF_VAR_ENABLE_LETS_ENCRYPT }}
+                  vpn_instance_type             = "${{ secrets.TF_VAR_VPN_INSTANCE_TYPE }}"
+                  enable_sns_alarms             = ${{ secrets.TF_VAR_ENABLE_SNS_ALARMS }}
+                  alarm_email                   = "${{ secrets.TF_VAR_ALARM_EMAIL }}"
+                  log_retention_days            = ${{ secrets.TF_VAR_LOG_RETENTION_DAYS }}
+                  enable_cost_anomaly_detection = ${{ secrets.TF_VAR_ENABLE_COST_ANOMALY_DETECTION }}
+                  cost_anomaly_threshold        = ${{ secrets.TF_VAR_COST_ANOMALY_THRESHOLD }}
+                  admin_email                   = "${{ secrets.TF_VAR_ADMIN_EMAIL }}"
+                  EOF
+
             - name: Terraform Plan
               id: plan
-              run: terraform plan -no-color -input=false -var-file=terraform.tfvars
+              run: |
+                  terraform plan -no-color -input=false \
+                    -var="owner=${{ secrets.TF_VAR_OWNER }}" \
+                    -var="allowed_ssh_cidr=${{ secrets.TF_VAR_ALLOWED_SSH_CIDR }}" \
+                    -var="existing_key_pair_name=${{ secrets.TF_VAR_KEY_PAIR_NAME }}" \
+                    -var="alarm_email=${{ secrets.TF_VAR_ALARM_EMAIL }}" \
+                    -var="admin_email=${{ secrets.TF_VAR_ADMIN_EMAIL }}"
               continue-on-error: true
 
             - name: Comment Plan Results
