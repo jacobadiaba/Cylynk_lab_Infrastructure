@@ -17,7 +17,7 @@ provider "aws" {
   default_tags {
     tags = {
       Project     = var.project_name
-      Environment = "production"
+      Environment = "dev"
       ManagedBy   = "Terraform"
       Owner       = var.owner
       CostCenter  = var.cost_center
