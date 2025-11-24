@@ -30,7 +30,7 @@ data "aws_caller_identity" "current" {}
 
 # Local variables
 locals {
-  environment = "production"
+  environment = "development"
 
   common_tags = {
     Project     = var.project_name
