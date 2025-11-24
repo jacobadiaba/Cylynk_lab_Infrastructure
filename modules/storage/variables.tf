@@ -46,8 +46,8 @@ variable "lifecycle_expiration_days" {
   type        = number
   default     = 365
   validation {
-    condition     = var.lifecycle_expiration_days > var.lifecycle_transition_days
-    error_message = "Expiration days must be greater than transition days."
+    condition     = var.lifecycle_expiration_days >= 30
+    error_message = "Expiration days must be at least 30 days."
   }
 }
 
