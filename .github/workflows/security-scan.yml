@@ -30,15 +30,22 @@ jobs:
               uses: aquasecurity/tfsec-action@v1.0.3
               with:
                   soft_fail: true
-                  format: sarif
-                  sarif_file: tfsec-results.sarif
-                  additional_args: --minimum-severity MEDIUM
+
+            - name: Run tfsec with SARIF output
+              run: |
+                  docker run --rm -v "$(pwd):/src" aquasec/tfsec:latest \
+                    --format sarif \
+                    --minimum-severity MEDIUM \
+                    --soft-fail \
+                    /src > tfsec-results.sarif
+              continue-on-error: true
 
             - name: Upload SARIF file
               uses: github/codeql-action/upload-sarif@v4
               if: always()
               with:
                   sarif_file: tfsec-results.sarif
+                  category: tfsec
 
     checkov:
         name: Checkov Security Scan
