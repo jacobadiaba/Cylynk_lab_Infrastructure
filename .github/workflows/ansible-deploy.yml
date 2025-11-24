@@ -125,6 +125,8 @@ jobs:
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
+            -e "enable_lets_encrypt=false" \
+            -e "domain_name=" \
             --check \
             --diff \
             -v
@@ -138,6 +140,8 @@ jobs:
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
+            -e "enable_lets_encrypt=false" \
+            -e "domain_name=" \
             --diff \
             -v
 
@@ -236,11 +240,18 @@ jobs:
         if: github.event.inputs.check_mode == 'true'
         env:
           GUACAMOLE_DB_PASSWORD: ${{ secrets.PROD_GUACAMOLE_DB_PASSWORD }}
+          DOMAIN_NAME: ${{ secrets.PROD_GUACAMOLE_DOMAIN }}
         run: |
           PLAYBOOK="${{ github.event.inputs.playbook }}"
+          ENABLE_SSL="false"
+          if [ -n "${DOMAIN_NAME}" ]; then
+            ENABLE_SSL="true"
+          fi
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
+            -e "enable_lets_encrypt=${ENABLE_SSL}" \
+            -e "domain_name=${DOMAIN_NAME:-}" \
             --check \
             --diff \
             -v
@@ -249,11 +260,18 @@ jobs:
         if: github.event.inputs.check_mode != 'true'
         env:
           GUACAMOLE_DB_PASSWORD: ${{ secrets.PROD_GUACAMOLE_DB_PASSWORD }}
+          DOMAIN_NAME: ${{ secrets.PROD_GUACAMOLE_DOMAIN }}
         run: |
           PLAYBOOK="${{ github.event.inputs.playbook }}"
+          ENABLE_SSL="false"
+          if [ -n "${DOMAIN_NAME}" ]; then
+            ENABLE_SSL="true"
+          fi
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
+            -e "enable_lets_encrypt=${ENABLE_SSL}" \
+            -e "domain_name=${DOMAIN_NAME:-}" \
             --diff \
             -v
 
