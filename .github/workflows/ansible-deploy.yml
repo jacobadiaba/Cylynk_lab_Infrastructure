@@ -127,6 +127,7 @@ jobs:
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             -e "enable_lets_encrypt=false" \
             -e "domain_name=" \
+            -e "project_name=cyberlab" \
             --check \
             --diff \
             -v
@@ -142,6 +143,7 @@ jobs:
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             -e "enable_lets_encrypt=false" \
             -e "domain_name=" \
+            -e "project_name=cyberlab" \
             --diff \
             -v
 
@@ -252,6 +254,7 @@ jobs:
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             -e "enable_lets_encrypt=${ENABLE_SSL}" \
             -e "domain_name=${DOMAIN_NAME:-}" \
+            -e "project_name=cyberlab" \
             --check \
             --diff \
             -v
@@ -272,6 +275,7 @@ jobs:
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             -e "enable_lets_encrypt=${ENABLE_SSL}" \
             -e "domain_name=${DOMAIN_NAME:-}" \
+            -e "project_name=cyberlab" \
             --diff \
             -v
 
