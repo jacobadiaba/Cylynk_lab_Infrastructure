@@ -210,11 +210,11 @@ resource "aws_network_acl" "student_labs" {
 
 # VPC Flow Logs
 resource "aws_flow_log" "main" {
-  count                = var.enable_flow_logs ? 1 : 0
-  iam_role_arn         = var.flow_logs_role_arn
-  log_destination      = var.flow_logs_destination_arn
-  traffic_type         = "ALL"
-  vpc_id               = aws_vpc.main.id
+  count                    = var.enable_flow_logs ? 1 : 0
+  iam_role_arn             = var.flow_logs_role_arn
+  log_destination          = var.flow_logs_destination_arn
+  traffic_type             = "ALL"
+  vpc_id                   = aws_vpc.main.id
   max_aggregation_interval = 60
 
   tags = merge(

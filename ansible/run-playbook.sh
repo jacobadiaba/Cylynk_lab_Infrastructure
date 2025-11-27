@@ -15,6 +15,6 @@ export ANSIBLE_INVENTORY="$SCRIPT_DIR/inventory/hosts.yml"
 # Run the playbook
 ansible-playbook \
   -i "$ANSIBLE_INVENTORY" \
-  playbooks/guacamole.yml \
+  playbooks/attackbox.yml \
   "$@"
 

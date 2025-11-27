@@ -1,0 +1,9 @@
+---
+# Variables for attackbox role
+# These can override defaults
+
+# Uncomment and modify as needed
+# attackbox_user: kali
+# attackbox_user_home: /home/kali
+# vnc_geometry: "1920x1080"
+# attackbox_environment: production

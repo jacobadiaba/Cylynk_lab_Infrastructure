@@ -1,0 +1,54 @@
+#!/bin/bash
+# Reset AttackBox to clean state
+
+echo "=========================================="
+echo "Resetting AttackBox to Clean State"
+echo "Started: $(date)"
+echo "=========================================="
+echo ""
+
+# Stop all user processes
+echo "======================================"
+echo "[1/5] Stopping user processes..."
+echo "======================================"
+pkill -u {{ attackbox_user }} || true
+echo "✓ User processes stopped"
+
+# Clean home directory (preserve essential files)
+echo "======================================"
+echo "[2/5] Cleaning home directory..."
+echo "======================================"
+cd {{ attackbox_user_home }}
+find . -type f ! -name '.bashrc' ! -name '.bash_profile' ! -name '.profile' -delete 2>/dev/null || true
+find . -type d ! -name '.' ! -name '.vnc' ! -name '.ssh' -exec rm -rf {} + 2>/dev/null || true
+echo "✓ Home directory cleaned"
+
+# Recreate standard directories
+echo "======================================"
+echo "[3/5] Recreating standard directories..."
+echo "======================================"
+mkdir -p {Desktop,Documents,Downloads,Tools}
+echo "✓ Directories recreated"
+
+# Clear bash history
+echo "======================================"
+echo "[4/5] Clearing bash history..."
+echo "======================================"
+cat /dev/null > ~/.bash_history
+history -c
+echo "✓ Bash history cleared"
+
+# Restart services
+echo "======================================"
+echo "[5/5] Restarting services..."
+echo "======================================"
+sudo systemctl restart vncserver@{{ vnc_display }}.service
+echo "✓ VNC restarted"
+sudo systemctl restart xrdp
+echo "✓ RDP restarted"
+
+echo ""
+echo "=========================================="
+echo "Reset complete! AttackBox is ready for use."
+echo "Completed: $(date)"
+echo "=========================================="

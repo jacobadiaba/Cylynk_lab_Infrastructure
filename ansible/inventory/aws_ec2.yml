@@ -1,0 +1,63 @@
+---
+# AWS EC2 Dynamic Inventory Configuration
+# This plugin automatically discovers EC2 instances based on tags and filters
+
+plugin: aws_ec2
+
+# AWS regions to search for instances
+regions:
+  - us-east-1 # Update to your region
+
+# Filter instances by tags
+filters:
+  tag:Role: AttackBox
+  tag:ManagedBy: Terraform
+  instance-state-name: running
+
+# How to construct inventory hostnames
+hostnames:
+  - tag:Name
+  - private-ip-address
+
+# Prefer private IP for connections (use public-ip-address if connecting over internet)
+compose:
+  ansible_host: public_ip_address
+
+# Group instances by various attributes
+keyed_groups:
+  # Group by Environment tag (dev, prod, etc.)
+  - key: tags.Environment
+    prefix: env
+    separator: _
+
+  # Group by Project tag
+  - key: tags.Project
+    prefix: project
+    separator: _
+
+  # Group by Role tag
+  - key: tags.Role
+    prefix: role
+    separator: _
+
+  # Group by instance type
+  - key: instance_type
+    prefix: instance_type
+    separator: _
+
+  # Group by availability zone
+  - key: placement.availability_zone
+    prefix: az
+    separator: _
+
+# Set variables for each host
+hostvar:
+  ansible_user: kali # Default user for Kali-based AttackBoxes
+  ansible_ssh_private_key_file: ~/.ssh/cylynk-lab-keypair # Update path
+
+# Cache settings (optional, improves performance)
+cache: yes
+cache_plugin: jsonfile
+cache_timeout: 300
+cache_connection: /tmp/ansible-aws-ec2-cache
+cache_prefix: aws_ec2

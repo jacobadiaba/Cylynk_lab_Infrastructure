@@ -1,0 +1,286 @@
+---
+# System update and penetration testing tools installation
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  tags:
+    - system
+    - update
+
+- name: Upgrade all packages
+  ansible.builtin.apt:
+    upgrade: dist
+    force_apt_get: true
+    dpkg_options: "force-confold,force-confdef"
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  tags:
+    - system
+    - update
+
+- name: Install essential build tools and dependencies
+  ansible.builtin.apt:
+    name:
+      - build-essential
+      - git
+      - curl
+      - wget
+      - vim
+      - tmux
+      - htop
+      - net-tools
+      - dnsutils
+      - whois
+      - netcat-traditional
+      - socat
+      - python3
+      - python3-pip
+      - python3-venv
+      - ruby
+      - ruby-dev
+      - golang-go
+      - default-jdk
+      - unzip
+      - p7zip-full
+      - jq
+    state: present
+  tags:
+    - tools
+    - essentials
+
+- name: Check if running on Kali Linux
+  ansible.builtin.shell: grep -qi kali /etc/os-release
+  register: is_kali
+  changed_when: false
+  failed_when: false
+  tags:
+    - tools
+
+- name: Install essential Kali Linux tools (core penetration testing)
+  ansible.builtin.apt:
+    name:
+      # Network scanning
+      - nmap
+      - masscan
+      # Web application testing
+      - gobuster
+      - nikto
+      - sqlmap
+      - wfuzz
+      # Exploitation
+      - metasploit-framework
+      - exploitdb
+      - searchsploit
+      # Password cracking
+      - john
+      - hydra
+      - hashcat
+      # Network sniffing
+      - wireshark
+      - tcpdump
+      - tshark
+      # Enumeration
+      - enum4linux
+      - smbclient
+      # Post-exploitation
+      - netcat-traditional
+      - socat
+    state: present
+    update_cache: true
+  when: is_kali.rc == 0
+  failed_when: false
+  tags:
+    - tools
+    - kali
+
+- name: Clean apt cache after essential tools installation
+  ansible.builtin.apt:
+    autoclean: true
+    autoremove: true
+  when: is_kali.rc == 0
+  tags:
+    - tools
+    - kali
+
+- name: Install Metasploit on non-Kali systems
+  when: is_kali.rc != 0
+  block:
+    - name: Download Metasploit installer
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb
+        dest: /tmp/msfinstall
+        mode: "0755"
+
+    - name: Install Metasploit Framework
+      ansible.builtin.command: /tmp/msfinstall
+      args:
+        creates: /usr/bin/msfconsole
+  tags:
+    - tools
+    - metasploit
+
+- name: Install network analysis tools
+  ansible.builtin.apt:
+    name:
+      - nmap
+      - traceroute
+      - mtr
+      - netdiscover
+    state: present
+  failed_when: false
+  tags:
+    - tools
+    - network
+
+- name: Install web application testing tools
+  ansible.builtin.apt:
+    name:
+      - nikto
+      - sqlmap
+      - wfuzz
+    state: present
+  failed_when: false
+  tags:
+    - tools
+    - webapp
+
+- name: Install password cracking tools
+  ansible.builtin.apt:
+    name:
+      - john
+      - hashcat
+      - hydra
+      - crunch
+    state: present
+  failed_when: false
+  tags:
+    - tools
+    - passwords
+
+- name: Initialize Metasploit database
+  ansible.builtin.command: msfdb init
+  args:
+    creates: /usr/share/metasploit-framework/config/database.yml
+  failed_when: false
+  tags:
+    - tools
+    - metasploit
+
+- name: Install post-exploitation tools
+  ansible.builtin.apt:
+    name:
+      - enum4linux
+      - smbclient
+    state: present
+  failed_when: false
+  tags:
+    - tools
+    - post-exploitation
+
+- name: Upgrade pip
+  ansible.builtin.pip:
+    name: pip
+    state: latest
+    extra_args: --break-system-packages
+  failed_when: false
+  tags:
+    - tools
+    - python
+
+- name: Install essential Python security tools via pip
+  ansible.builtin.pip:
+    name:
+      - impacket
+      - scapy
+      - requests
+    extra_args: --break-system-packages
+  failed_when: false
+  tags:
+    - tools
+    - python
+
+- name: Install reconnaissance tools
+  ansible.builtin.apt:
+    name:
+      - whatweb
+      - wafw00f
+    state: present
+  failed_when: false
+  tags:
+    - tools
+    - recon
+
+- name: Skip vulnerability scanners to save space
+  ansible.builtin.debug:
+    msg: "Skipping additional vulnerability scanners - can be installed later as needed"
+  tags:
+    - tools
+    - scanning
+
+- name: Skip wireless tools to save space
+  ansible.builtin.debug:
+    msg: "Skipping wireless tools - can be installed later as needed"
+  tags:
+    - tools
+    - wireless
+
+- name: Skip forensics tools to save space
+  ansible.builtin.debug:
+    msg: "Skipping forensics tools - can be installed later as needed"
+  tags:
+    - tools
+    - forensics
+
+- name: Clean apt cache after forensics tools
+  ansible.builtin.apt:
+    autoclean: true
+  tags:
+    - tools
+    - forensics
+
+- name: Install essential utilities only
+  ansible.builtin.apt:
+    name:
+      - terminator
+      - gedit
+      - firefox-esr
+    state: present
+  failed_when: false
+  tags:
+    - tools
+    - utilities
+
+- name: Clean apt cache after utilities
+  ansible.builtin.apt:
+    autoclean: true
+  tags:
+    - tools
+    - utilities
+
+- name: Create wordlists directory
+  ansible.builtin.file:
+    path: /usr/share/wordlists
+    state: directory
+    mode: "0755"
+  tags:
+    - tools
+    - wordlists
+
+- name: Create tools directory
+  ansible.builtin.file:
+    path: /opt/tools
+    state: directory
+    owner: "{{ attackbox_user }}"
+    group: "{{ attackbox_user }}"
+    mode: "0755"
+  tags:
+    - tools
+
+- name: Clean up apt cache
+  ansible.builtin.apt:
+    autoremove: true
+    autoclean: true
+  tags:
+    - cleanup

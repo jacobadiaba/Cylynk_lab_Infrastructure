@@ -44,3 +44,6 @@ roles/external/
 Thumbs.db
 Desktop.ini
 
+secret_script.sh
+
+variables.pkrvars.hcl

@@ -1,0 +1,29 @@
+VNC Server Configuration
+========================
+
+Port: {{ vnc_port }}
+Display: :{{ vnc_display }}
+Resolution: {{ vnc_geometry }}
+Desktop: XFCE4
+
+Password: {{ vnc_password }}
+
+Management Commands:
+  Start VNC:  start-vnc
+  Stop VNC:   stop-vnc
+  Status:     sudo systemctl status vncserver@{{ vnc_display }}.service
+  Restart:    sudo systemctl restart vncserver@{{ vnc_display }}.service
+
+Manual Commands:
+  Start:  vncserver :{{ vnc_display }} -geometry {{ vnc_geometry }} -depth {{ vnc_depth }}
+  Stop:   vncserver -kill :{{ vnc_display }}
+  List:   vncserver -list
+
+Connecting:
+  VNC Viewer: <instance-ip>:{{ vnc_port }}
+  Password: (see above)
+
+Troubleshooting:
+  View logs: journalctl -u vncserver@{{ vnc_display }}.service -f
+  Kill all:  vncserver -kill :*
+  Reset:     rm -rf ~/.vnc/*.pid ~/.vnc/*.log

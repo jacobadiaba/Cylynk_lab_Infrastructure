@@ -1,0 +1,80 @@
+{
+  "builds": [
+    {
+      "name": "kali_attackbox",
+      "builder_type": "amazon-ebs",
+      "build_time": 1764090821,
+      "files": null,
+      "artifact_id": "us-east-1:ami-0ceba75e2ecd0433b",
+      "packer_run_uuid": "3f4aec8a-6783-c96f-4f6a-5e8c0a8c3c2f",
+      "custom_data": {
+        "ami_name": "cyberlab-attackbox-kali-20251125164830",
+        "build_time": "20251125164830",
+        "environment": "production",
+        "kali_version": "2024.1",
+        "project": "cyberlab"
+      }
+    },
+    {
+      "name": "kali_attackbox",
+      "builder_type": "amazon-ebs",
+      "build_time": 1764165276,
+      "files": null,
+      "artifact_id": "us-east-1:ami-0ed5aaadc962a93b5",
+      "packer_run_uuid": "1a06f239-a5ec-daf3-bce0-afb526b871ce",
+      "custom_data": {
+        "ami_name": "cyberlab-attackbox-kali-20251126132321",
+        "build_time": "20251126132321",
+        "environment": "production",
+        "kali_version": "2024.1",
+        "project": "cyberlab"
+      }
+    },
+    {
+      "name": "kali_attackbox",
+      "builder_type": "amazon-ebs",
+      "build_time": 1764178737,
+      "files": null,
+      "artifact_id": "us-east-1:ami-0f06f02becc0ac993",
+      "packer_run_uuid": "d9bcfadd-1c1c-3b23-4f7f-4ab626596ecd",
+      "custom_data": {
+        "ami_name": "cyberlab-attackbox-kali-20251126170750",
+        "build_time": "20251126170750",
+        "environment": "production",
+        "kali_version": "2024.1",
+        "project": "cyberlab"
+      }
+    },
+    {
+      "name": "kali_attackbox",
+      "builder_type": "amazon-ebs",
+      "build_time": 1764230615,
+      "files": null,
+      "artifact_id": "us-east-1:ami-05dbaea02e27f29f9",
+      "packer_run_uuid": "357e0eed-4114-475c-037f-ed31e2568f46",
+      "custom_data": {
+        "ami_name": "cyberlab-attackbox-kali-20251127073241",
+        "build_time": "20251127073241",
+        "environment": "production",
+        "kali_version": "2024.1",
+        "project": "cyberlab"
+      }
+    },
+    {
+      "name": "kali_attackbox",
+      "builder_type": "amazon-ebs",
+      "build_time": 1764234090,
+      "files": null,
+      "artifact_id": "us-east-1:ami-0a7f3d27ef9326639",
+      "packer_run_uuid": "dd1d2c60-7bb1-8276-d76a-85567eac15ee",
+      "custom_data": {
+        "ami_name": "cyberlab-attackbox-kali-20251127083323",
+        "build_time": "20251127083323",
+        "environment": "production",
+        "kali_version": "2024.1",
+        "project": "cyberlab"
+      }
+    }
+  ],
+  "last_run_uuid": "dd1d2c60-7bb1-8276-d76a-85567eac15ee"
+}

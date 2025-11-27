@@ -1,0 +1,23 @@
+---
+# Handlers for attackbox role
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart VNC server
+  ansible.builtin.systemd:
+    name: vncserver@1.service
+    state: restarted
+  when: not (packer_build | default(false) | bool)
+
+- name: Restart xrdp
+  ansible.builtin.systemd:
+    name: xrdp
+    state: restarted
+  when: not (packer_build | default(false) | bool)
+
+- name: Restart SSH
+  ansible.builtin.systemd:
+    name: ssh
+    state: restarted

@@ -1,0 +1,51 @@
+# environments/dev/terraform.tfvars.example
+# Development environment - cost-optimized configuration
+# Copy this file to terraform.tfvars and fill in your values
+
+# General Configuration
+project_name = "cyberlab"
+aws_region   = "us-east-1"
+owner        = "dev-team@company.com"
+cost_center  = "development"
+
+# Networking Configuration - Smaller for dev
+vpc_cidr                 = "10.1.0.0/16" # Different from prod
+management_subnet_cidr   = "10.1.1.0/24"
+attackbox_subnet_cidr    = "10.1.10.0/24"
+student_labs_cidr        = "10.1.100.0/20"
+student_lab_subnet_count = 5 # Fewer subnets in dev
+
+# Cost optimization - disable expensive features in dev
+enable_nat_gateway   = true  # Keep for testing
+enable_flow_logs     = false # Disable to save costs
+enable_vpc_endpoints = false # Disable to save costs
+
+# Security Configuration
+allowed_ssh_cidr       = "YOUR_IP/32" # CHANGE THIS!
+existing_key_pair_name = "your-keypair-name"
+
+vpn_port        = 51820
+vpn_subnet_cidr = "10.51.0.0/16" # Different from prod
+
+# Guacamole Configuration - Smaller instance for dev
+guacamole_instance_type = "t3.small" # Smaller than prod
+guacamole_domain_name   = ""         # No domain in dev
+enable_lets_encrypt     = false
+
+# VPN Configuration - Smaller instance
+vpn_instance_type = "t3.micro"
+
+# Monitoring Configuration - Minimal in dev
+enable_sns_alarms  = false # Disable alarms in dev
+alarm_email        = "dev-alerts@yourdomain.com"
+log_retention_days = 7 # Shorter retention in dev
+
+# Contact Information
+admin_email                   = "dev-admin@yourdomain.com"
+enable_cost_anomaly_detection = false
+cost_anomaly_threshold        = 50 # Lower threshold for dev
+
+# Dev-specific notes:
+# - NAT Gateway: ~$35/month (keep for testing)
+# - Guacamole t3.small: ~$15/month
+# - VPN t3.micro: ~$8/month
