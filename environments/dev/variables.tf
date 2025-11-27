@@ -7,6 +7,12 @@ variable "project_name" {
   default     = "cyberlab"
 }
 
+variable "environment" {
+  description = "Environment name (dev, staging, production)"
+  type        = string
+  default     = "dev"
+}
+
 variable "aws_region" {
   description = "AWS region for resources"
   type        = string
@@ -164,4 +170,40 @@ variable "cost_anomaly_threshold" {
 variable "admin_email" {
   description = "Administrator email"
   type        = string
+}
+
+
+
+
+
+
+
+# AttackBox Configuration
+variable "attackbox_ami_id" {
+  description = "Custom AMI ID for AttackBox"
+  type        = string
+}
+
+variable "attackbox_instance_type" {
+  description = "Instance type for AttackBox"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "attackbox_pool_size" {
+  description = "Desired number of AttackBox instances"
+  type        = number
+  default     = 1
+}
+
+variable "attackbox_min_pool_size" {
+  description = "Minimum number of AttackBox instances"
+  type        = number
+  default     = 1
+}
+
+variable "attackbox_max_pool_size" {
+  description = "Maximum number of AttackBox instances"
+  type        = number
+  default     = 5
 }

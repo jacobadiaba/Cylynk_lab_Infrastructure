@@ -131,3 +131,34 @@ module "guacamole" {
   tags = local.common_tags
 }
 
+
+# AttackBox Module
+module "attackbox" {
+  source = "../../modules/attackbox"
+
+  project_name              = var.project_name
+  environment               = local.environment
+  instance_type             = var.attackbox_instance_type
+  subnet_ids                = [module.networking.attackbox_pool_subnet_id]
+  security_group_id         = module.security.attackbox_security_group_id
+  iam_instance_profile_name = module.security.ec2_instance_profile_name
+  key_name                  = module.security.key_pair_name
+  guacamole_private_ip      = module.guacamole.private_ip
+
+  # Pool configuration
+  pool_size     = var.attackbox_pool_size
+  min_pool_size = var.attackbox_min_pool_size
+  max_pool_size = var.attackbox_max_pool_size
+
+  # Use custom AMI
+  use_custom_ami = true
+  custom_ami_id  = var.attackbox_ami_id  # Set this from Packer output
+
+  # Features
+  enable_auto_scaling      = var.environment == "production"
+  enable_scheduled_scaling = var.environment == "production"
+  enable_session_tracking  = true
+  enable_notifications     = var.environment == "production"
+
+  tags = local.common_tags
+}

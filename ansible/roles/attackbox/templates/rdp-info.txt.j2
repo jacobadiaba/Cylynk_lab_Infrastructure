@@ -1,0 +1,41 @@
+RDP Server Configuration
+========================
+
+Port: {{ rdp_port }}
+Protocol: RDP (Remote Desktop Protocol)
+Desktop Environment: XFCE4
+
+Connection Details:
+  Address: <instance-ip>:{{ rdp_port }}
+  Username: {{ attackbox_user }}
+  Password: {{ rdp_password }}
+
+Management Commands:
+  Status:  sudo systemctl status xrdp
+  Restart: sudo systemctl restart xrdp
+  Stop:    sudo systemctl stop xrdp
+  Start:   sudo systemctl start xrdp
+
+Logs:
+  XRDP:    journalctl -u xrdp -f
+  Session: journalctl -u xrdp-sesman -f
+  User:    tail -f ~/.xsession-errors
+
+Performance Tuning:
+  - Using 24-bit color depth for better performance
+  - TCP_NODELAY enabled for lower latency
+  - XFCE4 lightweight desktop environment
+
+Troubleshooting:
+  - Check xrdp status: sudo systemctl status xrdp
+  - View logs: sudo journalctl -u xrdp -n 50
+  - Test connection: nc -zv localhost {{ rdp_port }}
+  - Restart services: sudo systemctl restart xrdp xrdp-sesman
+
+Connecting from:
+  Windows:  Use built-in Remote Desktop Connection (mstsc.exe)
+  macOS:    Use Microsoft Remote Desktop from App Store
+  Linux:    Use remmina or xfreerdp
+
+Example xfreerdp command:
+  xfreerdp /v:<instance-ip> /u:{{ attackbox_user }} /p:<password> /cert:ignore /size:1920x1080

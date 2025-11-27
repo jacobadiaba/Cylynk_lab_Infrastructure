@@ -1,0 +1,107 @@
+---
+# Cleanup tasks for Packer builds
+
+- name: Stop services before cleanup
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+  loop:
+    - vncserver@1.service
+    - xrdp
+  failed_when: false
+  tags:
+    - cleanup
+
+- name: Clean package cache
+  ansible.builtin.apt:
+    autoremove: true
+    autoclean: true
+    clean: true
+  tags:
+    - cleanup
+
+- name: Remove temporary files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/*
+    - /var/tmp/*
+    - /var/cache/apt/archives/*.deb
+  failed_when: false
+  tags:
+    - cleanup
+
+- name: Clean log files
+  ansible.builtin.shell: |
+    find /var/log -type f -name "*.log" -exec truncate -s 0 {} \;
+    find /var/log -type f -name "*.gz" -delete
+    find /var/log -type f -name "*.1" -delete
+    find /var/log -type f -name "*.old" -delete
+  changed_when: true
+  tags:
+    - cleanup
+
+- name: Remove journal logs
+  ansible.builtin.file:
+    path: /var/log/journal
+    state: absent
+  tags:
+    - cleanup
+
+- name: Clean shell history
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /root/.bash_history
+    - "{{ attackbox_user_home }}/.bash_history"
+  failed_when: false
+  tags:
+    - cleanup
+
+- name: Clean cloud-init data
+  ansible.builtin.shell: |
+    cloud-init clean --logs --seed || true
+    rm -rf /var/lib/cloud/instances/*
+    rm -rf /var/lib/cloud/instance
+  changed_when: true
+  failed_when: false
+  tags:
+    - cleanup
+
+- name: Remove SSH host keys
+  ansible.builtin.shell: rm -f /etc/ssh/ssh_host_*
+  changed_when: true
+  tags:
+    - cleanup
+
+- name: Clean machine ID
+  ansible.builtin.shell: |
+    truncate -s 0 /etc/machine-id
+    rm -f /var/lib/dbus/machine-id
+  changed_when: true
+  tags:
+    - cleanup
+
+- name: Clean VNC temporary files
+  ansible.builtin.shell: |
+    rm -f {{ attackbox_user_home }}/.vnc/*.pid
+    rm -f {{ attackbox_user_home }}/.vnc/*.log
+  changed_when: true
+  failed_when: false
+  tags:
+    - cleanup
+
+- name: Display disk usage
+  ansible.builtin.shell: df -h /
+  register: disk_usage
+  changed_when: false
+  tags:
+    - cleanup
+
+- name: Show cleanup results
+  ansible.builtin.debug:
+    msg: "{{ disk_usage.stdout_lines }}"
+  tags:
+    - cleanup

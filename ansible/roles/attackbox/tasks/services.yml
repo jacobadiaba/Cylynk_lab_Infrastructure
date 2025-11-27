@@ -1,0 +1,29 @@
+---
+# Service configuration and enablement
+
+- name: Ensure SSH service is enabled and running
+  ansible.builtin.systemd:
+    name: ssh
+    enabled: true
+    state: started
+  tags:
+    - services
+    - ssh
+
+- name: Ensure VNC service is configured to start on boot
+  ansible.builtin.systemd:
+    name: vncserver@1.service
+    enabled: true
+  when: not (packer_build | default(false) | bool)
+  tags:
+    - services
+    - vnc
+
+- name: Ensure xrdp service is configured to start on boot
+  ansible.builtin.systemd:
+    name: xrdp
+    enabled: true
+  when: not (packer_build | default(false) | bool)
+  tags:
+    - services
+    - rdp

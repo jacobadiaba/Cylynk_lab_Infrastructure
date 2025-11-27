@@ -1,0 +1,34 @@
+{
+  "agent": {
+    "metrics_collection_interval": 60,
+    "run_as_user": "root"
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/syslog",
+            "log_group_name": "{{ cloudwatch_log_group }}",
+            "log_stream_name": "{instance_id}"
+          }
+        ]
+      }
+    }
+  },
+  "metrics": {
+    "namespace": "{{ cloudwatch_namespace }}",
+    "metrics_collected": {
+      "cpu": {
+        "measurement": [
+          {"name": "cpu_usage_active", "unit": "Percent"}
+        ]
+      },
+      "mem": {
+        "measurement": [
+          {"name": "mem_used_percent", "unit": "Percent"}
+        ]
+      }
+    }
+  }
+}

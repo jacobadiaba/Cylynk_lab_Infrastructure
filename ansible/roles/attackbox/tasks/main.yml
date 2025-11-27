@@ -1,0 +1,79 @@
+---
+# Main tasks file for attackbox role
+
+- name: Include system and tools setup tasks
+  ansible.builtin.include_tasks: tools.yml
+  tags:
+    - tools
+    - packages
+
+- name: Include VNC server setup tasks
+  ansible.builtin.include_tasks: vnc.yml
+  tags:
+    - vnc
+    - remote-access
+
+- name: Include RDP server setup tasks
+  ansible.builtin.include_tasks: rdp.yml
+  tags:
+    - rdp
+    - remote-access
+
+- name: Include CloudWatch agent setup tasks
+  ansible.builtin.include_tasks: cloudwatch.yml
+  tags:
+    - cloudwatch
+    - monitoring
+
+- name: Include service configuration tasks
+  ansible.builtin.include_tasks: services.yml
+  tags:
+    - services
+
+- name: Include user environment setup tasks
+  ansible.builtin.include_tasks: user-environment.yml
+  tags:
+    - user-environment
+    - configuration
+
+- name: Include utility scripts setup tasks
+  ansible.builtin.include_tasks: scripts.yml
+  tags:
+    - scripts
+    - utilities
+
+- name: Include cleanup tasks (Packer only)
+  ansible.builtin.include_tasks: cleanup.yml
+  when: packer_build | default(false) | bool
+  tags:
+    - cleanup
+    - packer
+
+- name: Display access credentials
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "AttackBox Configuration Complete!"
+      - "=========================================="
+      - ""
+      - "RDP Access:"
+      - "  Port: 3389"
+      - "  Username: {{ attackbox_user }}"
+      - "  Password saved: /opt/cyberlab/rdp-password.txt"
+      - ""
+      - "VNC Access:"
+      - "  Port: 5901"
+      - "  Password saved: /opt/cyberlab/vnc-password.txt"
+      - ""
+      - "Helper Commands:"
+      - "  cyberlab-help    - Show help"
+      - "  reset-attackbox  - Reset to clean state"
+      - "  start-vnc        - Start VNC server"
+      - "  rdp-status       - Check RDP status"
+      - ""
+      - "To view passwords:"
+      - "  sudo cat /opt/cyberlab/rdp-password.txt"
+      - "  sudo cat /opt/cyberlab/vnc-password.txt"
+      - "=========================================="
+  tags:
+    - always

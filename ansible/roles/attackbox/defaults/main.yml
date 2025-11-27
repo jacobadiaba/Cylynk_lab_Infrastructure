@@ -1,0 +1,23 @@
+---
+# Default variables for attackbox role
+
+# User configuration
+attackbox_user: "{{ 'kali' if ansible_distribution == 'Kali' else 'ubuntu' }}"
+attackbox_user_home: "/home/{{ attackbox_user }}"
+
+# VNC configuration
+vnc_display: 1
+vnc_port: 5901
+vnc_geometry: "1920x1080"
+vnc_depth: 24
+
+# RDP configuration
+rdp_port: 3389
+
+# CloudWatch configuration
+cloudwatch_namespace: "CyberLab/AttackBox"
+cloudwatch_log_group: "/cyberlab/{{ attackbox_environment | default('production') }}/attackbox"
+
+# Project configuration
+attackbox_environment: production
+project_name: cyberlab

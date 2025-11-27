@@ -1,0 +1,210 @@
+---
+# VNC server setup and configuration
+
+- name: Install VNC server and XFCE desktop
+  ansible.builtin.apt:
+    name:
+      - tigervnc-standalone-server
+      - tigervnc-common
+      - xfce4
+      - xfce4-goodies
+      - dbus-x11
+      - x11-xserver-utils
+      - xinit
+    state: present
+  tags:
+    - vnc
+    - desktop
+
+- name: Create VNC directory
+  ansible.builtin.file:
+    path: "{{ attackbox_user_home }}/.vnc"
+    state: directory
+    owner: "{{ attackbox_user }}"
+    group: "{{ attackbox_user }}"
+    mode: "0755"
+  tags:
+    - vnc
+
+- name: Generate random VNC password
+  ansible.builtin.shell: openssl rand -base64 8 | tr -d '=+/' | cut -c1-8
+  register: vnc_password_generated
+  changed_when: false
+  tags:
+    - vnc
+
+- name: Set VNC password fact
+  ansible.builtin.set_fact:
+    vnc_password: "{{ vnc_password_generated.stdout }}"
+  tags:
+    - vnc
+
+- name: Check if VNC password file exists
+  ansible.builtin.stat:
+    path: "{{ attackbox_user_home }}/.vnc/passwd"
+  register: vnc_passwd_file
+  tags:
+    - vnc
+
+- name: Create VNC password file
+  ansible.builtin.shell: |
+    echo "{{ vnc_password }}" | su - {{ attackbox_user }} -c "vncpasswd -f" > {{ attackbox_user_home }}/.vnc/passwd
+  when: not vnc_passwd_file.stat.exists
+  tags:
+    - vnc
+
+- name: Set VNC password file permissions
+  ansible.builtin.file:
+    path: "{{ attackbox_user_home }}/.vnc/passwd"
+    owner: "{{ attackbox_user }}"
+    group: "{{ attackbox_user }}"
+    mode: "0600"
+  tags:
+    - vnc
+
+- name: Create CyberLab directory
+  ansible.builtin.file:
+    path: /opt/cyberlab
+    state: directory
+    mode: "0755"
+  tags:
+    - vnc
+
+- name: Save VNC password for retrieval
+  ansible.builtin.copy:
+    content: "{{ vnc_password }}"
+    dest: /opt/cyberlab/vnc-password.txt
+    mode: "0600"
+  tags:
+    - vnc
+
+- name: Create VNC xstartup script
+  ansible.builtin.copy:
+    content: |
+      #!/bin/bash
+      unset SESSION_MANAGER
+      unset DBUS_SESSION_BUS_ADDRESS
+      export XKL_XMODMAP_DISABLE=1
+      export XDG_CURRENT_DESKTOP=XFCE
+      export XDG_SESSION_DESKTOP=xfce
+
+      [ -x /etc/vnc/xstartup ] && exec /etc/vnc/xstartup
+      [ -r $HOME/.Xresources ] && xrdb $HOME/.Xresources
+      xsetroot -solid grey
+      vncconfig -iconic &
+
+      # Start XFCE
+      startxfce4 &
+    dest: "{{ attackbox_user_home }}/.vnc/xstartup"
+    owner: "{{ attackbox_user }}"
+    group: "{{ attackbox_user }}"
+    mode: "0755"
+  tags:
+    - vnc
+
+- name: Create VNC config file
+  ansible.builtin.copy:
+    content: |
+      # VNC server configuration
+      geometry=1920x1080
+      depth=24
+      dpi=96
+      localhost=no
+      alwaysshared
+    dest: "{{ attackbox_user_home }}/.vnc/config"
+    owner: "{{ attackbox_user }}"
+    group: "{{ attackbox_user }}"
+    mode: "0644"
+  tags:
+    - vnc
+
+- name: Create VNC systemd service
+  ansible.builtin.template:
+    src: vncserver.service.j2
+    dest: /etc/systemd/system/vncserver@.service
+    mode: "0644"
+  notify: Reload systemd
+  tags:
+    - vnc
+    - systemd
+
+- name: Enable VNC service
+  ansible.builtin.systemd:
+    name: vncserver@1.service
+    enabled: true
+    daemon_reload: true
+  tags:
+    - vnc
+    - systemd
+
+- name: Start VNC server (non-Packer builds only)
+  ansible.builtin.systemd:
+    name: vncserver@1.service
+    state: started
+  when: not (packer_build | default(false) | bool)
+  failed_when: false
+  tags:
+    - vnc
+    - systemd
+
+- name: Create start-vnc helper script
+  ansible.builtin.copy:
+    content: |
+      #!/bin/bash
+      # Start VNC server
+      echo "Starting VNC server..."
+      sudo systemctl start vncserver@1.service
+
+      # Wait a moment
+      sleep 2
+
+      # Check status
+      if sudo systemctl is-active --quiet vncserver@1.service; then
+          echo "✓ VNC server started successfully"
+          echo ""
+          echo "Connect using:"
+          echo "  VNC Viewer: $(hostname -I | awk '{print $1}'):5901"
+          echo "  Password: See /opt/cyberlab/vnc-password.txt"
+      else
+          echo "✗ VNC server failed to start"
+          sudo systemctl status vncserver@1.service
+      fi
+    dest: /usr/local/bin/start-vnc
+    mode: "0755"
+  tags:
+    - vnc
+    - scripts
+
+- name: Create stop-vnc helper script
+  ansible.builtin.copy:
+    content: |
+      #!/bin/bash
+      # Stop VNC server
+      echo "Stopping VNC server..."
+      sudo systemctl stop vncserver@1.service
+      echo "✓ VNC server stopped"
+    dest: /usr/local/bin/stop-vnc
+    mode: "0755"
+  tags:
+    - vnc
+    - scripts
+
+- name: Allow VNC port in firewall (if ufw is installed)
+  community.general.ufw:
+    rule: allow
+    port: "5901"
+    proto: tcp
+    comment: "VNC"
+  when: ansible_facts.packages['ufw'] is defined
+  failed_when: false
+  tags:
+    - vnc
+    - firewall
+
+- name: Create VNC information file
+  ansible.builtin.template:
+    src: vnc-info.txt.j2
+    dest: /opt/cyberlab/vnc-info.txt
+    mode: "0644"
+  tags:
+    - vnc

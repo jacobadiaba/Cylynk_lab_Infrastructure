@@ -1,0 +1,114 @@
+---
+# User environment setup and configuration
+
+- name: Create user desktop directories
+  ansible.builtin.file:
+    path: "{{ attackbox_user_home }}/{{ item }}"
+    state: directory
+    owner: "{{ attackbox_user }}"
+    group: "{{ attackbox_user }}"
+    mode: "0755"
+  loop:
+    - Desktop
+    - Documents
+    - Downloads
+    - Tools
+  tags:
+    - user-environment
+
+- name: Create custom bash prompt
+  ansible.builtin.lineinfile:
+    path: "{{ attackbox_user_home }}/.bashrc"
+    line: 'export PS1="\[\033[01;31m\]AttackBox\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "'
+    create: true
+    owner: "{{ attackbox_user }}"
+    group: "{{ attackbox_user }}"
+  tags:
+    - user-environment
+
+- name: Create Desktop README file
+  ansible.builtin.copy:
+    content: |
+      Welcome to CyberLab AttackBox!
+
+      This machine has been pre-configured with essential penetration testing tools.
+      Use this machine responsibly and only for authorized testing.
+
+      Pre-installed Tools:
+      - Network: nmap, masscan, netdiscover
+      - Web Testing: nikto, sqlmap, wfuzz, gobuster
+      - Exploitation: metasploit-framework, searchsploit
+      - Passwords: john, hydra, hashcat, crunch
+      - Sniffing: wireshark, tcpdump
+      - Enumeration: enum4linux, smbclient
+
+      Installing Additional Tools:
+      To install more tools as needed, use:
+        sudo apt install <tool-name>
+
+      Common additional tools:
+      - Wireless: aircrack-ng, reaver, wifite
+      - Web: burpsuite, zaproxy, wpscan
+      - Forensics: binwalk, volatility3, autopsy
+      - More: crackmapexec, ffuf, sublist3r
+
+      For help, type: cyberlab-help
+      To reset the instance, type: reset-attackbox
+    dest: "{{ attackbox_user_home }}/Desktop/README.txt"
+    owner: "{{ attackbox_user }}"
+    group: "{{ attackbox_user }}"
+    mode: "0644"
+  tags:
+    - user-environment
+
+- name: Create bash aliases file
+  ansible.builtin.copy:
+    content: |
+      # Network scanning
+      alias qnmap='nmap -sV -sC -O -p-'
+      alias quickscan='nmap -sV -sC'
+
+      # Web testing
+      alias dirsearch='gobuster dir -w /usr/share/wordlists/dirb/common.txt -u'
+
+      # Python server
+      alias pyserve='python3 -m http.server 8000'
+
+      # IP addresses
+      alias myip='curl ifconfig.me'
+      alias localip='ip -4 addr show | grep inet | grep -v 127.0.0.1'
+
+      # Tools
+      alias msf='msfconsole'
+      alias burp='burpsuite &'
+
+      # Docker quick commands
+      alias dkali='docker run -it --rm kalilinux/kali-rolling /bin/bash'
+    dest: "{{ attackbox_user_home }}/.bash_aliases"
+    owner: "{{ attackbox_user }}"
+    group: "{{ attackbox_user }}"
+    mode: "0644"
+  tags:
+    - user-environment
+
+- name: Create MOTD (Message of the Day)
+  ansible.builtin.copy:
+    content: |
+      ╔══════════════════════════════════════════════════════════════╗
+      ║                                                              ║
+      ║              CyberLab AttackBox - Kali Linux                 ║
+      ║                                                              ║
+      ║  This is a pre-configured penetration testing environment   ║
+      ║  Use responsibly and only for authorized testing.           ║
+      ║                                                              ║
+      ║  Pre-installed tools: Nmap, Metasploit, Burp Suite,        ║
+      ║  Wireshark, SQLMap, Nikto, and many more                    ║
+      ║                                                              ║
+      ║  Need help? Type 'cyberlab-help'                            ║
+      ║  Reset instance: Type 'reset-attackbox'                     ║
+      ║                                                              ║
+      ╚══════════════════════════════════════════════════════════════╝
+    dest: /etc/motd
+    mode: "0644"
+  tags:
+    - user-environment

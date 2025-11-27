@@ -1,0 +1,33 @@
+---
+# Ansible playbook for AttackBox configuration
+# This playbook configures a Kali Linux-based penetration testing environment
+
+- name: Configure CyberLab AttackBox
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    packer_build: false # Set to true when running in Packer
+
+  pre_tasks:
+    - name: Display build environment
+      ansible.builtin.debug:
+        msg: "Configuring AttackBox | Packer Build: {{ packer_build }} | OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+    - name: Wait for cloud-init to complete
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+      failed_when: false
+      when: packer_build | bool
+
+  roles:
+    - role: attackbox
+      tags:
+        - attackbox
+        - all
+
+  post_tasks:
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg: "AttackBox configuration completed successfully!"

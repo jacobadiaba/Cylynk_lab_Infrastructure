@@ -1,0 +1,171 @@
+---
+# RDP (xrdp) server setup and configuration
+
+- name: Install xrdp server and dependencies
+  ansible.builtin.apt:
+    name:
+      - xrdp
+      - xorgxrdp
+      - xfce4
+      - xfce4-goodies
+      - dbus-x11
+      - x11-xserver-utils
+    state: present
+  tags:
+    - rdp
+    - desktop
+
+- name: Generate random RDP password
+  ansible.builtin.shell: openssl rand -base64 12 | tr -d '=+/' | cut -c1-12
+  register: rdp_password_generated
+  changed_when: false
+  tags:
+    - rdp
+
+- name: Set RDP password fact
+  ansible.builtin.set_fact:
+    rdp_password: "{{ rdp_password_generated.stdout }}"
+  tags:
+    - rdp
+
+- name: Set user password for RDP
+  ansible.builtin.user:
+    name: "{{ attackbox_user }}"
+    password: "{{ rdp_password | password_hash('sha512') }}"
+    update_password: always
+  tags:
+    - rdp
+
+- name: Save RDP password for retrieval
+  ansible.builtin.copy:
+    content: "{{ rdp_password }}"
+    dest: /opt/cyberlab/rdp-password.txt
+    mode: "0600"
+  tags:
+    - rdp
+
+- name: Create .xsession file for user
+  ansible.builtin.copy:
+    content: |
+      #!/bin/bash
+      export XDG_SESSION_DESKTOP=xfce
+      export XDG_CURRENT_DESKTOP=XFCE
+      exec startxfce4
+    dest: "{{ attackbox_user_home }}/.xsession"
+    owner: "{{ attackbox_user }}"
+    group: "{{ attackbox_user }}"
+    mode: "0755"
+  tags:
+    - rdp
+
+- name: Configure xrdp startwm.sh
+  ansible.builtin.copy:
+    content: |
+      #!/bin/sh
+      # xrdp X session start script
+
+      if [ -r /etc/default/locale ]; then
+        . /etc/default/locale
+        export LANG LANGUAGE
+      fi
+
+      # Execute session start script
+      if [ -x "$HOME/.xsession" ]; then
+          exec $HOME/.xsession
+      else
+          exec startxfce4
+      fi
+    dest: /etc/xrdp/startwm.sh
+    mode: "0755"
+  tags:
+    - rdp
+
+- name: Configure xrdp.ini for better performance - max_bpp
+  ansible.builtin.lineinfile:
+    path: /etc/xrdp/xrdp.ini
+    regexp: "^max_bpp="
+    line: "max_bpp=24"
+  tags:
+    - rdp
+
+- name: Configure xrdp.ini for better performance - tcp_nodelay
+  ansible.builtin.lineinfile:
+    path: /etc/xrdp/xrdp.ini
+    regexp: "^#?tcp_nodelay="
+    line: "tcp_nodelay=true"
+  tags:
+    - rdp
+
+- name: Add xrdp user to ssl-cert group
+  ansible.builtin.user:
+    name: xrdp
+    groups: ssl-cert
+    append: true
+  tags:
+    - rdp
+
+- name: Enable xrdp services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    daemon_reload: true
+  loop:
+    - xrdp
+    - xrdp-sesman
+  tags:
+    - rdp
+    - systemd
+
+- name: Start xrdp services (non-Packer builds only)
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+  loop:
+    - xrdp
+    - xrdp-sesman
+  when: not (packer_build | default(false) | bool)
+  tags:
+    - rdp
+    - systemd
+
+- name: Allow RDP port in firewall (if ufw is installed)
+  community.general.ufw:
+    rule: allow
+    port: "3389"
+    proto: tcp
+    comment: "RDP"
+  when: ansible_facts.packages['ufw'] is defined
+  failed_when: false
+  tags:
+    - rdp
+    - firewall
+
+- name: Create RDP information file
+  ansible.builtin.template:
+    src: rdp-info.txt.j2
+    dest: /opt/cyberlab/rdp-info.txt
+    mode: "0644"
+  tags:
+    - rdp
+
+- name: Create rdp-status helper script
+  ansible.builtin.copy:
+    content: |
+      #!/bin/bash
+      echo "=== RDP Server Status ==="
+      echo ""
+      sudo systemctl status xrdp --no-pager
+      echo ""
+      echo "=== RDP Session Manager Status ==="
+      sudo systemctl status xrdp-sesman --no-pager
+      echo ""
+      echo "=== Listening Ports ==="
+      sudo ss -tlnp | grep 3389
+      echo ""
+      echo "=== Recent Logs ==="
+      sudo journalctl -u xrdp -n 10 --no-pager
+    dest: /usr/local/bin/rdp-status
+    mode: "0755"
+  tags:
+    - rdp
+    - scripts
