@@ -45,7 +45,28 @@ admin_email                   = "dev-admin@yourdomain.com"
 enable_cost_anomaly_detection = false
 cost_anomaly_threshold        = 50 # Lower threshold for dev
 
+# AttackBox Configuration
+attackbox_ami_id        = ""           # Leave empty to use official Kali AMI, or set custom AMI ID
+attackbox_instance_type = "t3.medium"
+attackbox_pool_size     = 1
+attackbox_min_pool_size = 1
+attackbox_max_pool_size = 3
+
+# Orchestrator Configuration
+session_ttl_hours            = 4     # Sessions expire after 4 hours
+max_sessions_per_student     = 1     # One AttackBox per student
+enable_orchestrator_api_key  = false # Set true for production
+orchestrator_allowed_origins = ["*"] # Restrict in production
+
+# Moodle Integration (optional)
+moodle_webhook_secret = "" # Set a secret for signed requests from Moodle
+
+# Guacamole API Access (for orchestrator to create connections)
+guacamole_admin_username = "guacadmin"
+guacamole_admin_password = "" # Set the Guacamole admin password
+
 # Dev-specific notes:
 # - NAT Gateway: ~$35/month (keep for testing)
 # - Guacamole t3.small: ~$15/month
 # - VPN t3.micro: ~$8/month
+# - AttackBox t3.medium: ~$30/month per instance (if running 24/7)

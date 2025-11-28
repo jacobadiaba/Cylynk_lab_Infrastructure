@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CyberLab - AttackBox Launcher</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">⚡</span>
+                <span class="logo-text">CyberLab</span>
+            </div>
+            <div class="header-badge">Test Console</div>
+        </header>
+
+        <!-- Configuration Panel -->
+        <section class="config-panel">
+            <h2 class="section-title">
+                <span class="title-icon">⚙️</span>
+                API Configuration
+            </h2>
+            <div class="config-grid">
+                <div class="input-group">
+                    <label for="apiEndpoint">API Endpoint</label>
+                    <input type="text" id="apiEndpoint" placeholder="https://your-api-id.execute-api.us-east-1.amazonaws.com/v1">
+                </div>
+                <div class="input-group">
+                    <label for="apiKey">API Key (optional)</label>
+                    <input type="text" id="apiKey" placeholder="Your API key if enabled">
+                </div>
+            </div>
+        </section>
+
+        <!-- Student Info Panel -->
+        <section class="student-panel">
+            <h2 class="section-title">
+                <span class="title-icon">👤</span>
+                Student Information
+            </h2>
+            <div class="config-grid">
+                <div class="input-group">
+                    <label for="studentId">Student ID</label>
+                    <input type="text" id="studentId" value="student001" placeholder="student001">
+                </div>
+                <div class="input-group">
+                    <label for="studentName">Student Name</label>
+                    <input type="text" id="studentName" value="John Doe" placeholder="John Doe">
+                </div>
+                <div class="input-group">
+                    <label for="courseId">Course ID</label>
+                    <input type="text" id="courseId" value="SEC101" placeholder="SEC101">
+                </div>
+                <div class="input-group">
+                    <label for="labId">Lab ID</label>
+                    <input type="text" id="labId" value="attackbox" placeholder="attackbox">
+                </div>
+            </div>
+        </section>
+
+        <!-- Action Buttons -->
+        <section class="actions">
+            <button id="launchBtn" class="btn btn-primary">
+                <span class="btn-icon">🚀</span>
+                Launch AttackBox
+            </button>
+            <button id="statusBtn" class="btn btn-secondary">
+                <span class="btn-icon">📊</span>
+                Check Status
+            </button>
+            <button id="terminateBtn" class="btn btn-danger">
+                <span class="btn-icon">⏹️</span>
+                Terminate Session
+            </button>
+        </section>
+
+        <!-- Session Status -->
+        <section class="session-panel" id="sessionPanel">
+            <h2 class="section-title">
+                <span class="title-icon">📡</span>
+                Session Status
+            </h2>
+            <div class="session-info" id="sessionInfo">
+                <div class="no-session">No active session. Click "Launch AttackBox" to start.</div>
+            </div>
+        </section>
+
+        <!-- Connection Panel (shown when ready) -->
+        <section class="connection-panel hidden" id="connectionPanel">
+            <h2 class="section-title">
+                <span class="title-icon">🔗</span>
+                Connection Ready
+            </h2>
+            <div class="connection-info">
+                <div class="connection-card">
+                    <div class="connection-header">
+                        <span class="connection-icon">🖥️</span>
+                        <span>Guacamole Remote Desktop</span>
+                    </div>
+                    <a href="#" id="guacamoleLink" class="connection-link" target="_blank">
+                        Open Guacamole
+                    </a>
+                </div>
+                <div class="connection-details">
+                    <div class="detail-row">
+                        <span class="detail-label">Instance IP:</span>
+                        <span class="detail-value" id="instanceIp">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">RDP Port:</span>
+                        <span class="detail-value">3389</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">VNC Port:</span>
+                        <span class="detail-value">5901</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">SSH Port:</span>
+                        <span class="detail-value">22</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Logs Panel -->
+        <section class="logs-panel">
+            <h2 class="section-title">
+                <span class="title-icon">📋</span>
+                API Logs
+                <button id="clearLogs" class="btn-small">Clear</button>
+            </h2>
+            <div class="logs-container" id="logsContainer">
+                <div class="log-entry log-info">Ready to test. Configure your API endpoint above.</div>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+

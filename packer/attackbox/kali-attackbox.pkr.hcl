@@ -206,6 +206,20 @@ build {
     ]
   }
 
+  # CRITICAL: Ensure cloud-init won't re-lock the account on first boot
+  provisioner "shell" {
+    inline = [
+      "echo 'Ensuring cloud-init will not re-lock user account...'",
+      "echo 'users: []' | sudo tee /etc/cloud/cloud.cfg.d/99-cyberlab-no-users.cfg",
+      "echo 'preserve_hostname: true' | sudo tee -a /etc/cloud/cloud.cfg.d/99-cyberlab-no-users.cfg",
+      "echo 'ssh_pwauth: true' | sudo tee -a /etc/cloud/cloud.cfg.d/99-cyberlab-no-users.cfg",
+      "sudo cloud-init clean --logs || true",
+      "echo 'Verifying kali account is unlocked...'",
+      "sudo grep '^kali:' /etc/shadow | cut -c1-20",
+      "if sudo grep -q '^kali:!' /etc/shadow; then echo 'WARNING: Account still locked!'; else echo 'Account unlocked successfully'; fi"
+    ]
+  }
+
   # Configure user environment
   provisioner "shell" {
     inline = [

@@ -74,7 +74,67 @@
         "kali_version": "2024.1",
         "project": "cyberlab"
       }
+    },
+    {
+      "name": "kali_attackbox",
+      "builder_type": "amazon-ebs",
+      "build_time": 1764263525,
+      "files": null,
+      "artifact_id": "us-east-1:ami-0d1832c59e7fa3ebe",
+      "packer_run_uuid": "35875170-7690-bf20-7830-6079a3e75e18",
+      "custom_data": {
+        "ami_name": "cyberlab-attackbox-kali-20251127164209",
+        "build_time": "20251127164209",
+        "environment": "production",
+        "kali_version": "2024.1",
+        "project": "cyberlab"
+      }
+    },
+    {
+      "name": "kali_attackbox",
+      "builder_type": "amazon-ebs",
+      "build_time": 1764319516,
+      "files": null,
+      "artifact_id": "us-east-1:ami-052921c34c1f94356",
+      "packer_run_uuid": "61dcd3ba-c082-34a8-d2b1-4c36946d4212",
+      "custom_data": {
+        "ami_name": "cyberlab-attackbox-kali-20251128081631",
+        "build_time": "20251128081631",
+        "environment": "production",
+        "kali_version": "2024.1",
+        "project": "cyberlab"
+      }
+    },
+    {
+      "name": "kali_attackbox",
+      "builder_type": "amazon-ebs",
+      "build_time": 1764327523,
+      "files": null,
+      "artifact_id": "us-east-1:ami-00dbcc5a2aa38e9c0",
+      "packer_run_uuid": "8da55194-7b2e-44fe-a40a-842c06ab6422",
+      "custom_data": {
+        "ami_name": "cyberlab-attackbox-kali-20251128102748",
+        "build_time": "20251128102748",
+        "environment": "production",
+        "kali_version": "2024.1",
+        "project": "cyberlab"
+      }
+    },
+    {
+      "name": "kali_attackbox",
+      "builder_type": "amazon-ebs",
+      "build_time": 1764342123,
+      "files": null,
+      "artifact_id": "us-east-1:ami-010d0bb81a106caa1",
+      "packer_run_uuid": "c3c97be6-a591-5c7e-62eb-b5290b58ae2b",
+      "custom_data": {
+        "ami_name": "cyberlab-attackbox-kali-20251128143104",
+        "build_time": "20251128143104",
+        "environment": "production",
+        "kali_version": "2024.1",
+        "project": "cyberlab"
+      }
     }
   ],
-  "last_run_uuid": "dd1d2c60-7bb1-8276-d76a-85567eac15ee"
+  "last_run_uuid": "c3c97be6-a591-5c7e-62eb-b5290b58ae2b"
 }

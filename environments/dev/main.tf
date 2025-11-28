@@ -162,3 +162,54 @@ module "attackbox" {
 
   tags = local.common_tags
 }
+
+# Orchestrator Module - Session Management API
+module "orchestrator" {
+  source = "../../modules/orchestrator"
+
+  project_name = var.project_name
+  environment  = local.environment
+  aws_region   = var.aws_region
+
+  # Networking - Disable VPC config for simpler testing (no VPC endpoints needed)
+  # Set enable_vpc_config = true if you have DynamoDB VPC endpoints configured
+  enable_vpc_config        = false
+  vpc_id                   = module.networking.vpc_id
+  subnet_ids               = [module.networking.management_subnet_id]
+  lambda_security_group_id = module.security.lambda_security_group_id
+
+  # AttackBox Integration
+  attackbox_asg_name          = module.attackbox.autoscaling_group_name
+  attackbox_asg_arn           = module.attackbox.autoscaling_group_arn
+  attackbox_security_group_id = module.security.attackbox_security_group_id
+
+  # Guacamole Integration
+  guacamole_private_ip     = module.guacamole.private_ip
+  guacamole_public_ip      = module.guacamole.public_ip
+  guacamole_api_url        = var.guacamole_domain_name != "" ? "https://${var.guacamole_domain_name}/guacamole" : ""
+  guacamole_admin_username = var.guacamole_admin_username
+  guacamole_admin_password = var.guacamole_admin_password
+
+  # RDP credentials (must match AttackBox AMI)
+  rdp_username = var.rdp_username
+  rdp_password = var.rdp_password
+
+  # Session Configuration
+  session_ttl_hours        = var.session_ttl_hours
+  max_sessions_per_student = var.max_sessions_per_student
+
+  # API Configuration
+  api_stage_name  = "v1"
+  enable_api_key  = var.enable_orchestrator_api_key
+  allowed_origins = var.orchestrator_allowed_origins
+
+  # Moodle Integration
+  moodle_webhook_secret = var.moodle_webhook_secret
+
+  # Monitoring
+  log_retention_days   = var.log_retention_days
+  enable_xray_tracing  = false
+  alarm_sns_topic_arns = compact([module.monitoring.sns_topic_arn])
+
+  tags = local.common_tags
+}

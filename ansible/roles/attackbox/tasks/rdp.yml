@@ -15,36 +15,123 @@
     - rdp
     - desktop
 
-- name: Generate random RDP password
+- name: Generate random RDP password (if not provided)
   ansible.builtin.shell: openssl rand -base64 12 | tr -d '=+/' | cut -c1-12
   register: rdp_password_generated
+  changed_when: false
+  when: rdp_password is not defined or rdp_password == ""
+  tags:
+    - rdp
+
+- name: Set RDP password fact (use provided or generated)
+  ansible.builtin.set_fact:
+    rdp_password_final: "{{ rdp_password | default(rdp_password_generated.stdout | default('changeme123')) }}"
+  tags:
+    - rdp
+
+# === Kali-proof password and account unlock ===
+
+- name: Install whois package for mkpasswd (if not present)
+  ansible.builtin.apt:
+    name: whois
+    state: present
+  tags:
+    - rdp
+
+- name: Generate SHA-512 password hash using mkpasswd
+  ansible.builtin.shell: mkpasswd --method=sha-512 '{{ rdp_password_final }}'
+  register: rdp_hash
+  no_log: true
   changed_when: false
   tags:
     - rdp
 
-- name: Set RDP password fact
-  ansible.builtin.set_fact:
-    rdp_password: "{{ rdp_password_generated.stdout }}"
-  tags:
-    - rdp
-
-- name: Set user password for RDP
+- name: Set password using generated hash
   ansible.builtin.user:
     name: "{{ attackbox_user }}"
-    password: "{{ rdp_password | password_hash('sha512') }}"
+    password: "{{ rdp_hash.stdout }}"
     update_password: always
+  no_log: true
   tags:
     - rdp
 
-- name: Unlock user account (Kali AMI has accounts locked by default)
+- name: Ensure account is unlocked with usermod -U
+  ansible.builtin.command: usermod -U {{ attackbox_user }}
+  changed_when: true
+  tags:
+    - rdp
+
+- name: Double-check unlock with passwd -u
   ansible.builtin.command: passwd -u {{ attackbox_user }}
   changed_when: true
+  failed_when: false
+  tags:
+    - rdp
+
+# === CRITICAL: Prevent cloud-init from re-locking account on first boot ===
+
+- name: Disable cloud-init user management
+  ansible.builtin.copy:
+    content: |
+      # CyberLab: Disable cloud-init user management to prevent account re-locking
+      users: []
+      preserve_hostname: true
+      ssh_pwauth: true
+      disable_root: false
+    dest: /etc/cloud/cloud.cfg.d/99-cyberlab-disable-users.cfg
+    mode: "0644"
+  tags:
+    - rdp
+    - cloud-init
+
+- name: Remove users-groups from cloud-init modules
+  ansible.builtin.lineinfile:
+    path: /etc/cloud/cloud.cfg
+    regexp: '^\s*-\s*users-groups'
+    state: absent
+  failed_when: false
+  tags:
+    - rdp
+    - cloud-init
+
+- name: Remove set-passwords from cloud-init modules
+  ansible.builtin.lineinfile:
+    path: /etc/cloud/cloud.cfg
+    regexp: '^\s*-\s*set-passwords'
+    state: absent
+  failed_when: false
+  tags:
+    - rdp
+    - cloud-init
+
+- name: Clean up cloud-init instance state
+  ansible.builtin.file:
+    path: /var/lib/cloud/instance
+    state: absent
+  failed_when: false
+  tags:
+    - rdp
+    - cloud-init
+
+- name: Verify account is unlocked (final check)
+  ansible.builtin.shell: |
+    SHADOW=$(grep "^{{ attackbox_user }}:" /etc/shadow)
+    echo "Shadow entry: $(echo "$SHADOW" | cut -c1-25)..."
+    if echo "$SHADOW" | grep -q "^{{ attackbox_user }}:!"; then
+      echo "ERROR: Account still locked"
+      exit 1
+    else
+      echo "SUCCESS: Account is unlocked"
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
   tags:
     - rdp
 
 - name: Save RDP password for retrieval
   ansible.builtin.copy:
-    content: "{{ rdp_password }}"
+    content: "{{ rdp_password_final }}"
     dest: /opt/cyberlab/rdp-password.txt
     mode: "0600"
   tags:

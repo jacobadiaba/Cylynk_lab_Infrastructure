@@ -49,3 +49,8 @@ output "key_pair_id" {
   description = "ID of SSH key pair"
   value       = data.aws_key_pair.existing.id
 }
+
+output "lambda_security_group_id" {
+  description = "ID of Lambda security group"
+  value       = aws_security_group.lambda.id
+}

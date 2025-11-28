@@ -290,6 +290,39 @@ resource "aws_iam_instance_profile" "ec2_profile" {
   )
 }
 
+# Security Group - Lambda (Orchestrator)
+resource "aws_security_group" "lambda" {
+  name        = "${var.project_name}-${var.environment}-lambda-sg"
+  description = "Security group for Lambda functions (orchestrator)"
+  vpc_id      = var.vpc_id
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-${var.environment}-lambda-sg"
+    }
+  )
+}
+
+# Lambda needs to access DynamoDB, EC2 API, and Guacamole
+resource "aws_vpc_security_group_egress_rule" "lambda_https" {
+  security_group_id = aws_security_group.lambda.id
+  description       = "HTTPS for AWS API calls"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
+resource "aws_vpc_security_group_egress_rule" "lambda_guacamole" {
+  security_group_id            = aws_security_group.lambda.id
+  description                  = "Access to Guacamole API"
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.guacamole.id
+}
+
 # SSH Key Pair
 data "aws_key_pair" "existing" {
   key_name = var.existing_key_pair_name

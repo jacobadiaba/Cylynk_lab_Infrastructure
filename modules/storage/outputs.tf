@@ -1,5 +1,10 @@
 # modules/storage/outputs.tf
 
+output "configs_bucket_name" {
+  description = "Name of the configs S3 bucket"
+  value       = aws_s3_bucket.configs.bucket
+}
+
 output "configs_bucket_id" {
   description = "ID of the configs S3 bucket"
   value       = aws_s3_bucket.configs.id
@@ -13,6 +18,11 @@ output "configs_bucket_arn" {
 output "configs_bucket_domain_name" {
   description = "Domain name of the configs S3 bucket"
   value       = aws_s3_bucket.configs.bucket_domain_name
+}
+
+output "logs_bucket_name" {
+  description = "Name of the logs S3 bucket"
+  value       = aws_s3_bucket.logs.bucket
 }
 
 output "logs_bucket_id" {

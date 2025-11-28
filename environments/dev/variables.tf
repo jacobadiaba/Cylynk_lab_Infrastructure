@@ -207,3 +207,62 @@ variable "attackbox_max_pool_size" {
   type        = number
   default     = 5
 }
+
+# Orchestrator Configuration
+variable "session_ttl_hours" {
+  description = "Session TTL in hours before auto-cleanup"
+  type        = number
+  default     = 4
+}
+
+variable "max_sessions_per_student" {
+  description = "Maximum concurrent sessions per student"
+  type        = number
+  default     = 1
+}
+
+variable "enable_orchestrator_api_key" {
+  description = "Require API key for orchestrator API"
+  type        = bool
+  default     = false
+}
+
+variable "orchestrator_allowed_origins" {
+  description = "Allowed CORS origins for orchestrator API"
+  type        = list(string)
+  default     = ["*"]
+}
+
+variable "moodle_webhook_secret" {
+  description = "Shared secret for Moodle webhook authentication"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "guacamole_admin_username" {
+  description = "Guacamole admin username for API access"
+  type        = string
+  default     = "guacadmin"
+  sensitive   = true
+}
+
+variable "guacamole_admin_password" {
+  description = "Guacamole admin password for API access"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "rdp_username" {
+  description = "RDP username for AttackBox (must match AMI configuration)"
+  type        = string
+  default     = "kali"
+}
+
+variable "rdp_password" {
+  description = "RDP password for AttackBox (must match AMI configuration)"
+  type        = string
+  default     = "kali"
+  sensitive   = true
+}
