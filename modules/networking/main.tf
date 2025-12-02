@@ -74,6 +74,7 @@ resource "aws_subnet" "student_labs" {
   cidr_block              = cidrsubnet(var.student_labs_cidr, 6, count.index)
   availability_zone       = data.aws_availability_zones.available.names[count.index % length(data.aws_availability_zones.available.names)]
   map_public_ip_on_launch = false
+ 
 
   tags = merge(
     var.tags,
@@ -84,6 +85,7 @@ resource "aws_subnet" "student_labs" {
       Index = count.index + 1
     }
   )
+
 }
 
 # Elastic IP for NAT Gateway
