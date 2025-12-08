@@ -184,8 +184,144 @@ def enrich_session_status(session: dict, pool_db, ec2_client) -> dict:
     return session
 
 
+def get_stage_info(session: dict) -> dict:
+    """
+    Calculate the current stage and progress for loading animations.
+    
+    Stages and their progress:
+    - session_created: 5%
+    - finding_instance: 10%
+    - instance_claimed: 18%
+    - instance_starting: 25%
+    - instance_running: 33%
+    - waiting_health: 42%
+    - health_check_passed: 50%
+    - creating_guac_connection: 62%
+    - guac_connection_ready: 70%
+    - creating_guac_user: 85%
+    - generating_token: 94%
+    - ready: 100%
+    """
+    status = session.get("status", "")
+    instance_state = session.get("instance_state", "")
+    connection_info = session.get("connection_info", {})
+    
+    # Determine stage based on status and available info
+    if status == SessionStatus.PENDING:
+        if session.get("instance_id"):
+            return {
+                "stage": "instance_claimed",
+                "progress": 18,
+                "message": "Instance assigned, preparing to start",
+                "estimated_seconds": 45,
+            }
+        else:
+            return {
+                "stage": "finding_instance",
+                "progress": 10,
+                "message": "Finding available instance",
+                "estimated_seconds": 55,
+            }
+    
+    elif status == SessionStatus.PROVISIONING:
+        if instance_state == "pending":
+            return {
+                "stage": "instance_starting",
+                "progress": 25,
+                "message": "Instance is starting up",
+                "estimated_seconds": 40,
+            }
+        elif instance_state == "running":
+            # Instance running but session not yet ready
+            if not connection_info:
+                return {
+                    "stage": "waiting_health",
+                    "progress": 42,
+                    "message": "Waiting for instance health check",
+                    "estimated_seconds": 25,
+                }
+            elif not connection_info.get("guacamole_connection_id"):
+                return {
+                    "stage": "creating_guac_connection",
+                    "progress": 62,
+                    "message": "Creating secure RDP connection",
+                    "estimated_seconds": 15,
+                }
+            else:
+                return {
+                    "stage": "generating_token",
+                    "progress": 94,
+                    "message": "Generating access credentials",
+                    "estimated_seconds": 3,
+                }
+        else:
+            return {
+                "stage": "instance_starting",
+                "progress": 25,
+                "message": "Instance is being prepared",
+                "estimated_seconds": 40,
+            }
+    
+    elif status == SessionStatus.READY:
+        return {
+            "stage": "ready",
+            "progress": 100,
+            "message": "AttackBox ready",
+            "estimated_seconds": 0,
+        }
+    
+    elif status == SessionStatus.ACTIVE:
+        return {
+            "stage": "ready",
+            "progress": 100,
+            "message": "AttackBox active",
+            "estimated_seconds": 0,
+        }
+    
+    elif status == SessionStatus.ERROR:
+        return {
+            "stage": "error",
+            "progress": 0,
+            "message": session.get("error", "An error occurred"),
+            "estimated_seconds": 0,
+        }
+    
+    elif status == SessionStatus.TERMINATED:
+        return {
+            "stage": "terminated",
+            "progress": 0,
+            "message": "Session terminated",
+            "estimated_seconds": 0,
+        }
+    
+    else:
+        return {
+            "stage": "session_created",
+            "progress": 5,
+            "message": "Session created",
+            "estimated_seconds": 60,
+        }
+
+
+def calculate_time_remaining(session: dict) -> int:
+    """Calculate remaining time in seconds."""
+    expires_at = session.get("expires_at", 0)
+    if not expires_at:
+        return 0
+    
+    now = get_current_timestamp()
+    remaining = expires_at - now
+    return max(0, remaining)
+
+
 def format_session_response(session: dict) -> dict:
-    """Format session for API response."""
+    """Format session for API response with stage info for loading animations."""
+    # Get stage info for loading animation
+    stage_info = get_stage_info(session)
+    
+    # Calculate time remaining
+    time_remaining = calculate_time_remaining(session)
+    
     return {
         "session_id": session.get("session_id"),
         "student_id": session.get("student_id"),
@@ -197,10 +333,18 @@ def format_session_response(session: dict) -> dict:
         "instance_ip": session.get("instance_ip"),
         "instance_state": session.get("instance_state"),
         "connection_info": session.get("connection_info"),
+        "direct_url": session.get("connection_info", {}).get("direct_url") 
+                      or session.get("connection_info", {}).get("guacamole_connection_url"),
         "created_at": session.get("created_at"),
         "updated_at": session.get("updated_at"),
         "expires_at": session.get("expires_at"),
+        "time_remaining": time_remaining,
         "error": session.get("error"),
         "termination_reason": session.get("termination_reason"),
+        # Stage info for loading animations
+        "stage": stage_info.get("stage"),
+        "progress": stage_info.get("progress"),
+        "stage_message": stage_info.get("message"),
+        "estimated_seconds": stage_info.get("estimated_seconds"),
     }
 

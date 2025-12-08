@@ -24,8 +24,10 @@ from utils import (
     generate_session_id,
     get_current_timestamp,
     get_iso_timestamp,
+    get_moodle_token_from_event,
     parse_request_body,
     success_response,
+    verify_moodle_request,
 )
 
 logger = logging.getLogger()
@@ -42,6 +44,10 @@ GUACAMOLE_ADMIN_USER = os.environ.get("GUACAMOLE_ADMIN_USER", "guacadmin")
 GUACAMOLE_ADMIN_PASS = os.environ.get("GUACAMOLE_ADMIN_PASS", "guacadmin")
 SESSION_TTL_HOURS = int(os.environ.get("SESSION_TTL_HOURS", "4"))
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "1"))
+
+# Moodle authentication
+MOODLE_WEBHOOK_SECRET = os.environ.get("MOODLE_WEBHOOK_SECRET", "")
+REQUIRE_MOODLE_AUTH = os.environ.get("REQUIRE_MOODLE_AUTH", "false").lower() == "true"
 
 # RDP connection defaults (can be overridden via request)
 RDP_USERNAME = os.environ.get("RDP_USERNAME", "kali")
@@ -166,7 +172,12 @@ def handler(event, context):
     """
     Main handler for create session requests.
     
-    Expected request body:
+    Authentication:
+    - If REQUIRE_MOODLE_AUTH is true, requires X-Moodle-Token header
+    - Token contains user info (user_id, username, fullname, email)
+    - Falls back to request body if auth not required
+    
+    Expected request body (when not using token auth):
     {
         "student_id": "student123",
         "student_name": "John Doe",
@@ -178,14 +189,47 @@ def handler(event, context):
     logger.info(f"Create session request: {event}")
     
     try:
-        # Parse request
+        # Parse request body
         body = parse_request_body(event)
         
-        student_id = body.get("student_id")
-        student_name = body.get("student_name", "Unknown")
-        course_id = body.get("course_id", "default")
-        lab_id = body.get("lab_id", "attackbox")
-        metadata = body.get("metadata", {})
+        # Try to verify Moodle token if provided
+        token_payload = None
+        moodle_token = get_moodle_token_from_event(event)
+        
+        if moodle_token:
+            if MOODLE_WEBHOOK_SECRET:
+                token_payload = verify_moodle_request(event, MOODLE_WEBHOOK_SECRET)
+                if not token_payload:
+                    logger.warning("Invalid Moodle token provided")
+                    if REQUIRE_MOODLE_AUTH:
+                        return error_response(401, "Invalid or expired authentication token")
+            else:
+                logger.warning("Moodle token provided but MOODLE_WEBHOOK_SECRET not configured")
+        elif REQUIRE_MOODLE_AUTH:
+            return error_response(401, "Authentication required. Missing X-Moodle-Token header.")
+        
+        # Extract user info from token or body
+        if token_payload:
+            # Use verified token data (trusted)
+            student_id = token_payload.get("user_id")
+            student_name = token_payload.get("fullname") or token_payload.get("username", "Unknown")
+            student_email = token_payload.get("email", "")
+            moodle_site = token_payload.get("site_url", "")
+            # Course is NOT tied - AttackBox is independent
+            course_id = "independent"
+            lab_id = "attackbox"
+            metadata = body.get("metadata", {})
+            metadata["auth_method"] = "moodle_token"
+            metadata["moodle_site"] = moodle_site
+            metadata["student_email"] = student_email
+        else:
+            # Use request body (less secure, for testing)
+            student_id = body.get("student_id")
+            student_name = body.get("student_name", "Unknown")
+            course_id = body.get("course_id", "independent")
+            lab_id = body.get("lab_id", "attackbox")
+            metadata = body.get("metadata", {})
+            metadata["auth_method"] = "request_body"
         
         if not student_id:
             return error_response(400, "Missing required field: student_id")

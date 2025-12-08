@@ -309,6 +309,8 @@ resource "aws_lambda_function" "create_session" {
       RDP_PASSWORD          = var.rdp_password
       SESSION_TTL_HOURS     = tostring(var.session_ttl_hours)
       MAX_SESSIONS          = tostring(var.max_sessions_per_student)
+      MOODLE_WEBHOOK_SECRET = var.moodle_webhook_secret
+      REQUIRE_MOODLE_AUTH   = tostring(var.require_moodle_auth)
       ENVIRONMENT           = var.environment
       PROJECT_NAME          = var.project_name
       AWS_REGION_NAME       = var.aws_region
@@ -518,7 +520,7 @@ resource "aws_apigatewayv2_api" "orchestrator" {
   cors_configuration {
     allow_origins     = var.allowed_origins
     allow_methods     = ["GET", "POST", "DELETE", "OPTIONS"]
-    allow_headers     = ["Content-Type", "Authorization", "X-Api-Key", "X-Moodle-Signature"]
+    allow_headers     = ["Content-Type", "Authorization", "X-Api-Key", "X-Moodle-Token", "X-Moodle-Signature", "Accept"]
     expose_headers    = ["X-Request-Id"]
     max_age           = 3600
     allow_credentials = false

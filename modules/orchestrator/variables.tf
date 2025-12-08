@@ -142,10 +142,16 @@ variable "allowed_origins" {
 
 # Moodle Integration
 variable "moodle_webhook_secret" {
-  description = "Shared secret for Moodle webhook authentication"
+  description = "Shared secret for Moodle webhook authentication (must match the secret in Moodle plugin settings)"
   type        = string
   default     = ""
   sensitive   = true
+}
+
+variable "require_moodle_auth" {
+  description = "Require Moodle token authentication for session creation"
+  type        = bool
+  default     = false
 }
 
 # Monitoring

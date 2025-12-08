@@ -723,3 +723,158 @@ class GuacamoleClient:
         conn_url = self.get_connection_url(connection_id)
         return f"{conn_url}?token={user_token}"
 
+
+# =============================================================================
+# Moodle Token Verification
+# =============================================================================
+
+class MoodleTokenVerifier:
+    """
+    Verifies signed tokens from the Moodle AttackBox plugin.
+    
+    Tokens are signed using HMAC-SHA256 and contain user information,
+    timestamp, expiry, and a nonce for replay attack prevention.
+    """
+    
+    def __init__(self, secret: str):
+        """
+        Initialize the token verifier.
+        
+        Args:
+            secret: The shared secret used for verifying token signatures.
+        """
+        self.secret = secret
+        self._used_nonces: set = set()  # In production, use Redis/DynamoDB
+        self._max_nonce_age = 300  # 5 minutes
+    
+    def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """
+        Verify a Moodle-signed token and return the payload if valid.
+        
+        Args:
+            token: The signed token (base64_payload.signature)
+            
+        Returns:
+            The decoded payload if valid, None if invalid.
+        """
+        if not token or not self.secret:
+            logger.warning("Token verification failed: missing token or secret")
+            return None
+        
+        try:
+            # Split token into payload and signature
+            parts = token.split(".")
+            if len(parts) != 2:
+                logger.warning("Token verification failed: invalid token format")
+                return None
+            
+            payload_base64, signature = parts
+            
+            # Verify signature
+            import hmac
+            import hashlib
+            
+            expected_signature = hmac.new(
+                self.secret.encode("utf-8"),
+                payload_base64.encode("utf-8"),
+                hashlib.sha256
+            ).hexdigest()
+            
+            if not hmac.compare_digest(signature, expected_signature):
+                logger.warning("Token verification failed: invalid signature")
+                return None
+            
+            # Decode payload
+            payload_json = self._base64url_decode(payload_base64)
+            payload = json.loads(payload_json)
+            
+            # Verify expiry
+            expires = payload.get("expires", 0)
+            if time.time() > expires:
+                logger.warning("Token verification failed: token expired")
+                return None
+            
+            # Verify nonce (prevent replay attacks)
+            nonce = payload.get("nonce")
+            if nonce:
+                if nonce in self._used_nonces:
+                    logger.warning("Token verification failed: nonce already used (replay attack?)")
+                    return None
+                self._used_nonces.add(nonce)
+                # Clean up old nonces (in production, use TTL in Redis/DynamoDB)
+                self._cleanup_old_nonces()
+            
+            logger.info(f"Token verified for user: {payload.get('user_id')}")
+            return payload
+            
+        except Exception as e:
+            logger.error(f"Token verification error: {e}")
+            return None
+    
+    def _base64url_decode(self, data: str) -> str:
+        """Decode URL-safe base64."""
+        # Add padding if needed
+        remainder = len(data) % 4
+        if remainder:
+            data += "=" * (4 - remainder)
+        
+        import base64
+        return base64.urlsafe_b64decode(data).decode("utf-8")
+    
+    def _cleanup_old_nonces(self):
+        """Clean up nonces older than max age (simple in-memory implementation)."""
+        # In production, this would be handled by TTL in Redis/DynamoDB
+        # For Lambda, nonces are cleared on cold starts anyway
+        if len(self._used_nonces) > 10000:
+            self._used_nonces.clear()
+
+
+def get_moodle_token_from_event(event: Dict[str, Any]) -> Optional[str]:
+    """
+    Extract the Moodle token from an API Gateway event.
+    
+    Looks for the token in:
+    1. X-Moodle-Token header
+    2. Authorization header (Bearer token)
+    
+    Args:
+        event: API Gateway event
+        
+    Returns:
+        The token string if found, None otherwise.
+    """
+    headers = event.get("headers") or {}
+    
+    # Try X-Moodle-Token header first
+    token = headers.get("x-moodle-token") or headers.get("X-Moodle-Token")
+    if token:
+        return token
+    
+    # Try Authorization header
+    auth_header = headers.get("authorization") or headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        return auth_header[7:]
+    
+    return None
+
+
+def verify_moodle_request(event: Dict[str, Any], secret: str) -> Optional[Dict[str, Any]]:
+    """
+    Verify a Moodle-authenticated request.
+    
+    Convenience function that extracts and verifies the token from an event.
+    
+    Args:
+        event: API Gateway event
+        secret: The shared secret for verification
+        
+    Returns:
+        The verified token payload if valid, None otherwise.
+    """
+    token = get_moodle_token_from_event(event)
+    if not token:
+        logger.warning("No Moodle token found in request")
+        return None
+    
+    verifier = MoodleTokenVerifier(secret)
+    return verifier.verify_token(token)
