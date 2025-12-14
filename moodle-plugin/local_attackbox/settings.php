@@ -173,5 +173,18 @@ if ($hassiteconfig) {
     ));
 
     $ADMIN->add('localplugins', $settings);
+
+    // Add admin dashboard link if user has manage sessions capability.
+    if (has_capability('local/attackbox:managesessions', context_system::instance())) {
+        $ADMIN->add(
+            'localplugins',
+            new admin_externalpage(
+                'local_attackbox_admin_dashboard',
+                get_string('admin:dashboard_title', 'local_attackbox'),
+                new moodle_url('/local/attackbox/admin_dashboard.php'),
+                'local/attackbox:managesessions'
+            )
+        );
+    }
 }
 

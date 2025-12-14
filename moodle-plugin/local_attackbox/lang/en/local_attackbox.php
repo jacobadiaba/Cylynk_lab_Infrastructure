@@ -28,6 +28,7 @@ defined('MOODLE_INTERNAL') || die();
 $string['pluginname'] = 'LynkBox Launcher';
 $string['plugindisabled'] = 'The LynkBox Launcher plugin is currently disabled.';
 $string['notconfigured'] = 'The LynkBox Launcher plugin is not properly configured. Please contact your administrator.';
+$string['admin_dashboard'] = 'LynkBox Admin Dashboard';
 
 // Settings page.
 $string['settings:apiheading'] = 'API Configuration';
@@ -139,4 +140,39 @@ $string['usage:total_sessions'] = 'Total Sessions';
 $string['usage:loading'] = 'Loading usage data...';
 $string['usage:error'] = 'Failed to load usage data';
 $string['usage:unlimited'] = 'Unlimited';
+
+// Admin Dashboard.
+$string['admin:dashboard_title'] = 'LynkBox Admin Dashboard';
+$string['admin:filter_status'] = 'Filter by Status';
+$string['admin:all'] = 'All';
+$string['admin:active'] = 'Active';
+$string['admin:ready'] = 'Ready';
+$string['admin:provisioning'] = 'Provisioning';
+$string['admin:terminated'] = 'Terminated';
+$string['admin:search'] = 'Search';
+$string['admin:search_placeholder'] = 'Search by session ID, student ID, or name...';
+$string['admin:refresh'] = 'Refresh';
+$string['admin:loading'] = 'Loading sessions...';
+$string['admin:student_name'] = 'Student';
+$string['admin:session_id'] = 'Session ID';
+$string['admin:status'] = 'Status';
+$string['admin:instance_id'] = 'Instance ID';
+$string['admin:created'] = 'Started';
+$string['admin:duration'] = 'Duration';
+$string['admin:expires'] = 'Expires';
+$string['admin:actions'] = 'Actions';
+$string['admin:terminate_session'] = 'Terminate';
+$string['admin:confirm_terminate'] = 'Are you sure you want to terminate this session?';
+$string['admin:session_terminated'] = 'Session terminated successfully';
+$string['admin:no_sessions'] = 'No sessions found';
+$string['admin:total_sessions'] = 'Total Sessions';
+$string['admin:active_now'] = 'Active Now';
+$string['admin:provisioning_count'] = 'Provisioning';
+$string['admin:instances_used'] = 'Instances Used';
+$string['admin:error_loading'] = 'Error loading sessions';
+
+// Capabilities.
+$string['attackbox:launch'] = 'Launch LynkBox sessions';
+$string['attackbox:configure'] = 'Configure LynkBox plugin settings';
+$string['attackbox:managesessions'] = 'Manage all LynkBox sessions';
 

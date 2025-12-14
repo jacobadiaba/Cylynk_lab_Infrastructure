@@ -635,6 +635,62 @@ resource "aws_lambda_function" "usage_history" {
 }
 
 # =============================================================================
+# Admin Sessions Lambda
+# =============================================================================
+
+resource "aws_cloudwatch_log_group" "admin_sessions" {
+  name              = "/aws/lambda/${local.function_name_prefix}-admin-sessions"
+  retention_in_days = var.log_retention_days
+
+  tags = local.common_tags
+}
+
+resource "aws_lambda_function" "admin_sessions" {
+  filename         = "${path.module}/lambda/packages/admin-sessions.zip"
+  function_name    = "${local.function_name_prefix}-admin-sessions"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "index.lambda_handler"
+  runtime          = "python3.11"
+  timeout          = 30
+  memory_size      = 256
+
+  source_code_hash = fileexists("${path.module}/lambda/packages/admin-sessions.zip") ? filebase64sha256("${path.module}/lambda/packages/admin-sessions.zip") : null
+
+  layers = [aws_lambda_layer_version.common.arn]
+
+  environment {
+    variables = {
+      SESSIONS_TABLE_NAME   = aws_dynamodb_table.sessions.name
+      MOODLE_WEBHOOK_SECRET = var.moodle_webhook_secret
+      REQUIRE_MOODLE_AUTH   = tostring(var.require_moodle_auth)
+      ENVIRONMENT           = var.environment
+      PROJECT_NAME          = var.project_name
+    }
+  }
+
+  dynamic "vpc_config" {
+    for_each = var.enable_vpc_config ? [1] : []
+    content {
+      subnet_ids         = var.subnet_ids
+      security_group_ids = [var.lambda_security_group_id]
+    }
+  }
+
+  tracing_config {
+    mode = var.enable_xray_tracing ? "Active" : "PassThrough"
+  }
+
+  depends_on = [aws_cloudwatch_log_group.admin_sessions]
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${local.function_name_prefix}-admin-sessions"
+    }
+  )
+}
+
+# =============================================================================
 # EventBridge Schedule for Pool Manager
 # =============================================================================
 
@@ -842,6 +898,30 @@ resource "aws_lambda_permission" "usage_history_apigw" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.usage_history.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.orchestrator.execution_arn}/*/*"
+}
+
+# =============================================================================
+# Admin Sessions API Routes
+# =============================================================================
+
+resource "aws_apigatewayv2_integration" "admin_sessions" {
+  api_id           = aws_apigatewayv2_api.orchestrator.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.admin_sessions.invoke_arn
+}
+
+resource "aws_apigatewayv2_route" "admin_sessions" {
+  api_id    = aws_apigatewayv2_api.orchestrator.id
+  route_key = "GET /admin/sessions"
+  target    = "integrations/${aws_apigatewayv2_integration.admin_sessions.id}"
+}
+
+resource "aws_lambda_permission" "admin_sessions_apigw" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.admin_sessions.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.orchestrator.execution_arn}/*/*"
 }

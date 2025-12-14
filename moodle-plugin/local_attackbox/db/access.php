@@ -45,5 +45,14 @@ $capabilities = [
             'manager' => CAP_ALLOW,
         ],
     ],
+
+    // Capability to manage all AttackBox sessions (admin dashboard).
+    'local/attackbox:managesessions' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => [
+            'manager' => CAP_ALLOW,
+        ],
+    ],
 ];
 

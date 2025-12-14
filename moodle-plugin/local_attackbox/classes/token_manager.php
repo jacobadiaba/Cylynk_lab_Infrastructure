@@ -33,7 +33,8 @@ defined('MOODLE_INTERNAL') || die();
  * in the plugin settings. Each token contains user information,
  * a timestamp, expiry time, and a nonce to prevent replay attacks.
  */
-class token_manager {
+class token_manager
+{
 
     /** @var string The shared secret for signing tokens. */
     private $secret;
@@ -54,7 +55,8 @@ class token_manager {
      * @param string|null $secret The shared secret (uses config if null).
      * @param int|null $validity Token validity in seconds (uses config if null).
      */
-    public function __construct(?string $secret = null, ?int $validity = null) {
+    public function __construct(?string $secret = null, ?int $validity = null)
+    {
         $this->secret = $secret ?? get_config('local_attackbox', 'shared_secret');
         $this->validity = $validity ?? (int) get_config('local_attackbox', 'token_validity') ?: 300;
     }
@@ -66,7 +68,8 @@ class token_manager {
      * @return string The signed token (base64 payload + '.' + signature).
      * @throws \coding_exception If shared secret is not configured.
      */
-    public function generate_token(\stdClass $user): string {
+    public function generate_token(\stdClass $user): string
+    {
         if (empty($this->secret)) {
             throw new \coding_exception('AttackBox shared secret is not configured');
         }
@@ -104,7 +107,8 @@ class token_manager {
      *
      * @return string A 32-character hex string.
      */
-    private function generate_nonce(): string {
+    private function generate_nonce(): string
+    {
         return bin2hex(random_bytes(16));
     }
 
@@ -114,7 +118,8 @@ class token_manager {
      * @param string $payload The base64-encoded payload.
      * @return string The signature as a hex string.
      */
-    private function sign(string $payload): string {
+    private function sign(string $payload): string
+    {
         return hash_hmac('sha256', $payload, $this->secret);
     }
 
@@ -124,7 +129,8 @@ class token_manager {
      * @param string $data The data to encode.
      * @return string The URL-safe base64 encoded string.
      */
-    private function base64url_encode(string $data): string {
+    private function base64url_encode(string $data): string
+    {
         return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
     }
 
@@ -133,7 +139,8 @@ class token_manager {
      *
      * @return string The Moodle site URL.
      */
-    private function get_site_url(): string {
+    private function get_site_url(): string
+    {
         global $CFG;
         return $CFG->wwwroot;
     }
@@ -144,7 +151,8 @@ class token_manager {
      * @param \stdClass $user Moodle user
      * @return array [string $plan, int $quota_minutes]
      */
-    public function resolve_plan_and_quota(\stdClass $user): array {
+    public function resolve_plan_and_quota(\stdClass $user): array
+    {
         $roles = $this->get_user_role_shortnames($user);
 
         $freemium_role = get_config('local_attackbox', 'role_freemium_shortname') ?: 'freemium';
@@ -171,7 +179,8 @@ class token_manager {
      * @param string $plan
      * @return int
      */
-    private function get_plan_quota_minutes(string $plan): int {
+    private function get_plan_quota_minutes(string $plan): int
+    {
         $config_key = "limit_{$plan}_minutes";
         $configured = get_config('local_attackbox', $config_key);
 
@@ -188,13 +197,14 @@ class token_manager {
      * @param \stdClass $user
      * @return array
      */
-    private function get_user_role_shortnames(\stdClass $user): array {
+    private function get_user_role_shortnames(\stdClass $user): array
+    {
         $roles = get_user_roles(\context_system::instance(), $user->id, true);
         if (empty($roles)) {
             return [];
         }
 
-        return array_values(array_filter(array_map(function($role) {
+        return array_values(array_filter(array_map(function ($role) {
             return $role->shortname ?? null;
         }, $roles)));
     }
@@ -205,7 +215,8 @@ class token_manager {
      * @param string $token The signed token.
      * @return array|null The payload if valid, null if invalid.
      */
-    public function verify_token(string $token): ?array {
+    public function verify_token(string $token): ?array
+    {
         $parts = explode('.', $token);
         if (count($parts) !== 2) {
             return null;
@@ -241,7 +252,8 @@ class token_manager {
      * @param string $data The URL-safe base64 encoded string.
      * @return string The decoded data.
      */
-    private function base64url_decode(string $data): string {
+    private function base64url_decode(string $data): string
+    {
         $remainder = strlen($data) % 4;
         if ($remainder) {
             $data .= str_repeat('=', 4 - $remainder);
@@ -254,7 +266,8 @@ class token_manager {
      *
      * @return bool True if configured, false otherwise.
      */
-    public function is_configured(): bool {
+    public function is_configured(): bool
+    {
         return !empty($this->secret) && !empty(get_config('local_attackbox', 'api_url'));
     }
 
@@ -263,8 +276,38 @@ class token_manager {
      *
      * @return string The orchestrator API URL.
      */
-    public function get_api_url(): string {
+    public function get_api_url(): string
+    {
         return get_config('local_attackbox', 'api_url') ?: '';
+    }
+
+    /**
+     * Generate a token for admin operations (for get_all_sessions.php).
+     * Returns the token and API URL in a format compatible with the admin endpoint.
+     *
+     * @param int $userid The admin user ID
+     * @return array|null Array with 'token' and 'api_url', or null if not configured
+     */
+    public function get_token_for_admin(int $userid): ?array
+    {
+        global $DB;
+
+        if (!$this->is_configured()) {
+            return null;
+        }
+
+        $user = $DB->get_record('user', ['id' => $userid]);
+        if (!$user) {
+            return null;
+        }
+
+        $token = $this->generate_token($user);
+        $api_url = $this->get_api_url();
+
+        return [
+            'token' => $token,
+            'api_url' => $api_url,
+        ];
     }
 }
 

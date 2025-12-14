@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
+from decimal import Decimal
 
 # Add common layer to path
 sys.path.insert(0, "/opt/python")
@@ -113,28 +114,85 @@ def handler(event, context):
         formatted_sessions = []
         
         for session in sessions:
+            session_id = session.get("session_id", "unknown")
             # Calculate duration if both created_at and terminated_at exist
             duration_minutes = 0
             created_at = session.get("created_at")
             terminated_at = session.get("terminated_at")
             
+            # Log the types for debugging
+            logger.info(f"Session {session_id}: created_at type={type(created_at).__name__}, terminated_at type={type(terminated_at).__name__ if terminated_at else 'None'}")
+            
+            # Convert timestamps to ISO format if they're Unix timestamps (Decimal/int)
+            created_at_iso = None
+            terminated_at_iso = None
+            
+            if created_at:
+                try:
+                    # Convert Decimal to float first
+                    if isinstance(created_at, Decimal):
+                        created_at = float(created_at)
+                    
+                    # If it's a Unix timestamp (int or float), convert to ISO
+                    if isinstance(created_at, (int, float)):
+                        created_at_iso = datetime.fromtimestamp(created_at, tz=timezone.utc).isoformat()
+                    else:
+                        # It's already a string, use as-is
+                        created_at_iso = str(created_at)
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error formatting created_at for session {session_id}: {e}, type={type(created_at)}")
+            
+            if terminated_at:
+                try:
+                    # Convert Decimal to float first
+                    if isinstance(terminated_at, Decimal):
+                        terminated_at = float(terminated_at)
+                    
+                    # If it's a Unix timestamp (int or float), convert to ISO
+                    if isinstance(terminated_at, (int, float)):
+                        terminated_at_iso = datetime.fromtimestamp(terminated_at, tz=timezone.utc).isoformat()
+                    else:
+                        # It's already a string, use as-is
+                        terminated_at_iso = str(terminated_at)
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error formatting terminated_at for session {session_id}: {e}, type={type(terminated_at)}")
+            
+            # Calculate duration
             if created_at and terminated_at:
                 try:
-                    start = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                    end = datetime.fromisoformat(terminated_at.replace("Z", "+00:00"))
-                    duration_seconds = (end - start).total_seconds()
+                    # Convert Decimal to float first
+                    if isinstance(created_at, Decimal):
+                        created_at = float(created_at)
+                    if isinstance(terminated_at, Decimal):
+                        terminated_at = float(terminated_at)
+                    
+                    # Work with the raw timestamps for calculation
+                    if isinstance(created_at, (int, float)):
+                        start_ts = float(created_at)
+                    else:
+                        # Parse ISO string
+                        start_ts = datetime.fromisoformat(str(created_at).replace("Z", "+00:00")).timestamp()
+                    
+                    if isinstance(terminated_at, (int, float)):
+                        end_ts = float(terminated_at)
+                    else:
+                        # Parse ISO string
+                        end_ts = datetime.fromisoformat(str(terminated_at).replace("Z", "+00:00")).timestamp()
+                    
+                    duration_seconds = end_ts - start_ts
                     duration_minutes = int(duration_seconds / 60)
                     total_minutes += duration_minutes
-                except (ValueError, AttributeError) as e:
-                    logger.warning(f"Error calculating duration for session {session.get('session_id')}: {e}")
+                    logger.info(f"Session {session_id}: duration={duration_minutes} minutes")
+                except (ValueError, AttributeError, TypeError) as e:
+                    logger.warning(f"Error calculating duration for session {session_id}: {e}, created_at={created_at}, terminated_at={terminated_at}")
             
             formatted_sessions.append({
-                "session_id": session.get("session_id"),
+                "session_id": session_id,
                 "student_id": session.get("student_id"),
                 "student_name": session.get("student_name"),
                 "status": session.get("status"),
-                "created_at": created_at,
-                "terminated_at": terminated_at,
+                "created_at": created_at_iso,
+                "terminated_at": terminated_at_iso,
                 "duration_minutes": duration_minutes,
                 "instance_id": session.get("instance_id"),
             })
