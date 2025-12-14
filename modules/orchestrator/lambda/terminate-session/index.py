@@ -18,6 +18,7 @@ from utils import (
     GuacamoleClient,
     InstanceStatus,
     SessionStatus,
+    UsageTracker,
     error_response,
     get_current_timestamp,
     get_iso_timestamp,
@@ -32,6 +33,7 @@ logger.setLevel(logging.INFO)
 # Environment variables
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE")
 INSTANCE_POOL_TABLE = os.environ.get("INSTANCE_POOL_TABLE")
+USAGE_TABLE = os.environ.get("USAGE_TABLE")
 GUACAMOLE_PRIVATE_IP = os.environ.get("GUACAMOLE_PRIVATE_IP", "")
 GUACAMOLE_API_URL = os.environ.get("GUACAMOLE_API_URL", "")
 GUACAMOLE_ADMIN_USER = os.environ.get("GUACAMOLE_ADMIN_USER", "guacadmin")
@@ -193,6 +195,24 @@ def handler(event, context):
                 "updated_at": get_current_timestamp(),
             }
         )
+        
+        # Track usage if session was active
+        if USAGE_TABLE and session.get("student_id"):
+            created_at = session.get("created_at", now)
+            duration_minutes = (now - created_at) / 60
+            
+            # Only charge if session ran for at least some time
+            if duration_minutes >= 0.5:  # At least 30 seconds
+                try:
+                    usage_tracker = UsageTracker(USAGE_TABLE)
+                    usage_tracker.record_usage(
+                        user_id=session["student_id"],
+                        minutes=int(duration_minutes)
+                    )
+                    logger.info(f"Recorded {int(duration_minutes)} minutes of usage for user {session['student_id']}")
+                except Exception as e:
+                    logger.error(f"Failed to record usage: {e}")
+                    # Don't fail the termination if usage tracking fails
         
         return success_response(
             {

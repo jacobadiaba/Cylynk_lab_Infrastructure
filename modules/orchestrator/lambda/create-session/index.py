@@ -19,8 +19,10 @@ from utils import (
     GuacamoleClient,
     InstanceStatus,
     SessionStatus,
+    UsageTracker,
     calculate_expiry,
     error_response,
+    DEFAULT_PLAN_LIMITS,
     generate_session_id,
     get_current_timestamp,
     get_iso_timestamp,
@@ -44,6 +46,7 @@ GUACAMOLE_ADMIN_USER = os.environ.get("GUACAMOLE_ADMIN_USER", "guacadmin")
 GUACAMOLE_ADMIN_PASS = os.environ.get("GUACAMOLE_ADMIN_PASS", "guacadmin")
 SESSION_TTL_HOURS = int(os.environ.get("SESSION_TTL_HOURS", "4"))
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "1"))
+USAGE_TABLE = os.environ.get("USAGE_TABLE")
 
 # Moodle authentication
 MOODLE_WEBHOOK_SECRET = os.environ.get("MOODLE_WEBHOOK_SECRET", "")
@@ -76,6 +79,26 @@ def get_guacamole_internal_url() -> str:
     if GUACAMOLE_PRIVATE_IP:
         return f"https://{GUACAMOLE_PRIVATE_IP}/guacamole"
     return ""
+
+
+def resolve_plan_info(token_payload: dict) -> tuple[str, int, list]:
+    """
+    Resolve plan, quota_minutes, and roles from the Moodle token payload.
+    Falls back to defaults if not provided.
+    """
+    plan = (token_payload or {}).get("plan") or "freemium"
+    quota_minutes = (token_payload or {}).get("quota_minutes")
+    roles = (token_payload or {}).get("roles", [])
+
+    if quota_minutes is None:
+        quota_minutes = DEFAULT_PLAN_LIMITS.get(plan, -1)
+
+    try:
+        quota_minutes = int(quota_minutes)
+    except (TypeError, ValueError):
+        quota_minutes = DEFAULT_PLAN_LIMITS.get(plan, -1)
+
+    return plan, quota_minutes, roles
 
 
 def create_guacamole_connection(
@@ -233,6 +256,32 @@ def handler(event, context):
         
         if not student_id:
             return error_response(400, "Missing required field: student_id")
+        
+        # Resolve plan and quota from token
+        plan, quota_minutes, roles = resolve_plan_info(token_payload)
+        logger.info(f"User {student_id} plan: {plan}, quota: {quota_minutes} minutes")
+        
+        # Check usage quota (unless unlimited)
+        if USAGE_TABLE and quota_minutes != -1:
+            usage_tracker = UsageTracker(USAGE_TABLE)
+            quota_check = usage_tracker.check_quota(student_id, quota_minutes)
+            
+            if not quota_check["allowed"]:
+                logger.warning(f"Quota exceeded for user {student_id}: {quota_check}")
+                return error_response(
+                    403,
+                    "Monthly usage limit exceeded",
+                    {
+                        "error": "quota_exceeded",
+                        "plan": plan,
+                        "consumed_minutes": quota_check["consumed_minutes"],
+                        "quota_minutes": quota_minutes,
+                        "remaining_minutes": 0,
+                        "resets_at": quota_check["resets_at"],
+                    }
+                )
+            
+            logger.info(f"Quota check passed: {quota_check['remaining_minutes']} minutes remaining")
         
         # Initialize clients
         sessions_db = DynamoDBClient(SESSIONS_TABLE)

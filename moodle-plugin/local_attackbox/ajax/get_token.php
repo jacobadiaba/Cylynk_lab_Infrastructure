@@ -54,6 +54,7 @@ try {
     // Generate token.
     $token_manager = new \local_attackbox\token_manager();
     $token = $token_manager->generate_token($USER);
+    [$plan, $quota_minutes] = $token_manager->resolve_plan_and_quota($USER);
 
     // Get session TTL for display.
     $session_ttl = (int) get_config('local_attackbox', 'session_ttl_hours') ?: 4;
@@ -67,6 +68,8 @@ try {
             'id' => $USER->id,
             'fullname' => fullname($USER),
             'email' => $USER->email,
+            'plan' => $plan,
+            'quota_minutes' => $quota_minutes,
         ],
         'session_ttl_hours' => $session_ttl,
     ]);

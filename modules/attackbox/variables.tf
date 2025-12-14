@@ -65,7 +65,6 @@ variable "guacamole_private_ip" {
 variable "pool_size" {
   description = "Desired number of AttackBox instances in pool"
   type        = number
-  default     = 10
   validation {
     condition     = var.pool_size >= 1 && var.pool_size <= 100
     error_message = "Pool size must be between 1 and 100."
@@ -75,21 +74,13 @@ variable "pool_size" {
 variable "min_pool_size" {
   description = "Minimum number of AttackBox instances"
   type        = number
-  default     = 2
-  validation {
-    condition     = var.min_pool_size >= 0 && var.min_pool_size <= 50
-    error_message = "Minimum pool size must be between 0 and 50."
-  }
+
 }
 
 variable "max_pool_size" {
   description = "Maximum number of AttackBox instances"
   type        = number
-  default     = 20
-  validation {
-    condition     = var.max_pool_size >= 1 && var.max_pool_size <= 200
-    error_message = "Maximum pool size must be between 1 and 200."
-  }
+  
 }
 
 # Volume Configuration

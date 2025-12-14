@@ -21,6 +21,7 @@ from utils import (
     EC2Client,
     InstanceStatus,
     SessionStatus,
+    UsageTracker,
     get_current_timestamp,
     get_iso_timestamp,
 )
@@ -31,6 +32,7 @@ logger.setLevel(logging.INFO)
 # Environment variables
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE")
 INSTANCE_POOL_TABLE = os.environ.get("INSTANCE_POOL_TABLE")
+USAGE_TABLE = os.environ.get("USAGE_TABLE")
 ASG_NAME = os.environ.get("ASG_NAME")
 PROJECT_NAME = os.environ.get("PROJECT_NAME", "cyberlab")
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
@@ -97,6 +99,7 @@ def handler(event, context):
 def cleanup_expired_sessions(sessions_db, pool_db, ec2_client, now: int) -> int:
     """Clean up sessions that have expired."""
     cleaned = 0
+    usage_tracker = UsageTracker(USAGE_TABLE) if USAGE_TABLE else None
     
     # Query active sessions and check expiry
     # Note: In production, you'd want a GSI on status or use DynamoDB Streams
@@ -110,8 +113,23 @@ def cleanup_expired_sessions(sessions_db, pool_db, ec2_client, now: int) -> int:
             if expires_at and now > expires_at:
                 session_id = session["session_id"]
                 instance_id = session.get("instance_id")
+                student_id = session.get("student_id")
+                created_at = session.get("created_at", now)
                 
                 logger.info(f"Cleaning up expired session: {session_id}")
+                
+                # Track usage before terminating
+                if usage_tracker and student_id:
+                    duration_minutes = (now - created_at) / 60
+                    if duration_minutes >= 0.5:  # At least 30 seconds
+                        try:
+                            usage_tracker.record_usage(
+                                user_id=student_id,
+                                minutes=int(duration_minutes)
+                            )
+                            logger.info(f"Recorded {int(duration_minutes)} minutes for expired session {session_id}")
+                        except Exception as e:
+                            logger.error(f"Failed to record usage for expired session: {e}")
                 
                 # Update session status
                 sessions_db.update_item(

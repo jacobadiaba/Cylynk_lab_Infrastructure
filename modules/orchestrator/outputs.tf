@@ -35,6 +35,16 @@ output "instance_pool_table_arn" {
   value       = aws_dynamodb_table.instance_pool.arn
 }
 
+output "usage_table_name" {
+  description = "DynamoDB usage tracking table name"
+  value       = aws_dynamodb_table.usage.name
+}
+
+output "usage_table_arn" {
+  description = "DynamoDB usage tracking table ARN"
+  value       = aws_dynamodb_table.usage.arn
+}
+
 output "lambda_role_arn" {
   description = "IAM role ARN for Lambda functions"
   value       = aws_iam_role.lambda_role.arn
@@ -60,6 +70,11 @@ output "pool_manager_function_name" {
   value       = aws_lambda_function.pool_manager.function_name
 }
 
+output "get_usage_function_name" {
+  description = "Get usage Lambda function name"
+  value       = aws_lambda_function.get_usage.function_name
+}
+
 # API Endpoints for Moodle integration
 output "create_session_endpoint" {
   description = "Endpoint to create a new session"
@@ -81,3 +96,7 @@ output "student_sessions_endpoint" {
   value       = "${aws_apigatewayv2_api.orchestrator.api_endpoint}/${var.api_stage_name}/students"
 }
 
+output "get_usage_endpoint" {
+  description = "Endpoint to get usage statistics"
+  value       = "${aws_apigatewayv2_api.orchestrator.api_endpoint}/${var.api_stage_name}/usage"
+}

@@ -43,6 +43,20 @@ $string['settings:session_ttl'] = 'Session Duration (hours)';
 $string['settings:session_ttl_desc'] = 'How long a LynkBox session remains active (for display purposes only, actual TTL is controlled by the API).';
 $string['settings:token_validity'] = 'Token Validity (seconds)';
 $string['settings:token_validity_desc'] = 'How long an authentication token remains valid. Recommended: 300 seconds (5 minutes).';
+$string['settings:quotaheading'] = 'Role-based quotas';
+$string['settings:quotaheading_desc'] = 'Map Moodle roles to LynkBox plans and monthly time allowances.';
+$string['settings:role_freemium'] = 'Freemium role shortname';
+$string['settings:role_freemium_desc'] = 'Moodle role shortname that should receive the Freemium plan.';
+$string['settings:role_starter'] = 'Starter role shortname';
+$string['settings:role_starter_desc'] = 'Moodle role shortname that should receive the Starter plan.';
+$string['settings:role_pro'] = 'Pro role shortname';
+$string['settings:role_pro_desc'] = 'Moodle role shortname that should receive the Pro plan.';
+$string['settings:limit_freemium'] = 'Freemium monthly minutes';
+$string['settings:limit_freemium_desc'] = 'Total minutes per month allowed for Freemium users (default 300 = 5h).';
+$string['settings:limit_starter'] = 'Starter monthly minutes';
+$string['settings:limit_starter_desc'] = 'Total minutes per month allowed for Starter users (default 900 = 15h).';
+$string['settings:limit_pro'] = 'Pro monthly minutes';
+$string['settings:limit_pro_desc'] = 'Total minutes per month allowed for Pro users (-1 = unlimited).';
 
 $string['settings:uiheading'] = 'User Interface';
 $string['settings:uiheading_desc'] = 'Configure the appearance and behavior of the launcher.';
@@ -65,6 +79,10 @@ $string['button:active'] = 'Open LynkBox';
 $string['button:terminate'] = 'End Session';
 $string['button:tooltip'] = 'Launch your personal Kali Linux hacking environment in the browser. No installation required!';
 $string['button:tooltip_active'] = 'Click to open LynkBox or end your current session';
+$string['button:usage_dashboard'] = 'View usage history and statistics';
+
+// Timer text.
+$string['timer:time_remaining'] = 'Time remaining';
 
 // Overlay text.
 $string['overlay:title'] = 'Deploying LynkBox';
@@ -102,4 +120,23 @@ $string['progress:100'] = 'LynkBox ready — launching now 🚀';
 
 // Privacy.
 $string['privacy:metadata'] = 'The AttackBox Launcher plugin does not store any personal data locally. User information is transmitted to the CyberLab Orchestrator API for session management.';
+
+// Usage Dashboard.
+$string['usage:dashboard_title'] = 'LynkBox Usage Dashboard';
+$string['usage:current_quota'] = 'Current Quota';
+$string['usage:plan'] = 'Plan';
+$string['usage:used'] = 'Used';
+$string['usage:remaining'] = 'Remaining';
+$string['usage:resets_on'] = 'Resets on';
+$string['usage:session_history'] = 'Session History';
+$string['usage:no_sessions'] = 'No sessions found';
+$string['usage:session_id'] = 'Session ID';
+$string['usage:started_at'] = 'Started';
+$string['usage:ended_at'] = 'Ended';
+$string['usage:duration'] = 'Duration';
+$string['usage:status'] = 'Status';
+$string['usage:total_sessions'] = 'Total Sessions';
+$string['usage:loading'] = 'Loading usage data...';
+$string['usage:error'] = 'Failed to load usage data';
+$string['usage:unlimited'] = 'Unlimited';
 

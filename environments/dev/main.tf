@@ -55,7 +55,7 @@ module "networking" {
   enable_flow_logs          = var.enable_flow_logs
   flow_logs_role_arn        = module.monitoring.flow_logs_role_arn
   flow_logs_destination_arn = module.monitoring.flow_logs_log_group_arn
-  enable_vpc_endpoints      = var.enable_vpc_endpoints
+  enable_vpc_endpoints      = true  # Enabled for cost optimization
 
   tags = local.common_tags
 }
@@ -123,7 +123,7 @@ module "guacamole" {
   domain_name                = var.guacamole_domain_name
   admin_email                = var.admin_email
   enable_lets_encrypt        = var.enable_lets_encrypt
-  log_retention_days         = var.log_retention_days
+  log_retention_days         = 7  # Reduced for cost optimization in dev
   cpu_alarm_threshold        = 80
   memory_alarm_threshold     = 85
   alarm_sns_topic_arns       = compact([module.monitoring.sns_topic_arn])
@@ -155,7 +155,7 @@ module "attackbox" {
   custom_ami_id  = var.attackbox_ami_id  # Set this from Packer output
 
   # Features
-  enable_auto_scaling      = var.environment == "production"
+  enable_auto_scaling      = true  # Enable in dev for testing concurrent sessions
   enable_scheduled_scaling = var.environment == "production"
   enable_session_tracking  = true
   enable_notifications     = var.environment == "production"
@@ -207,9 +207,43 @@ module "orchestrator" {
   moodle_webhook_secret = var.moodle_webhook_secret
 
   # Monitoring
-  log_retention_days   = var.log_retention_days
+  log_retention_days   = 7  # Reduced for cost optimization in dev
   enable_xray_tracing  = false
   alarm_sns_topic_arns = compact([module.monitoring.sns_topic_arn])
 
+  tags = local.common_tags
+}
+
+# Cost Optimization Module
+module "cost_optimization" {
+  source = "../../modules/cost-optimization"
+
+  project_name = var.project_name
+  environment  = local.environment
+  aws_region   = var.aws_region
+
+  # Budget Configuration - Dev Environment (Disabled - may conflict with existing budgets)
+  enable_daily_budget   = false  # Set to true if you want daily budget alerts
+  daily_budget_limit    = 15     # $15/day for dev
+  enable_monthly_budget = false  # Set to true if you want monthly budget alerts
+  monthly_budget_limit  = 400    # $400/month for dev
+  budget_alert_emails   = [var.admin_email]
+
+  # EC2 Usage Budget (Disabled to avoid conflicts)
+  enable_ec2_usage_budget = false
+  ec2_usage_hours_limit   = 720  # ~30 days * 24 hours for dev pool
+
+  # Compute Optimizer (Free service, no limits)
+  enable_compute_optimizer = true
+
+  # Cost Anomaly Detection (Disabled - AWS account limit reached)
+  enable_cost_anomaly_detection = false  # Enable only if you haven't reached AWS anomaly monitor limit
+  anomaly_alert_emails          = [var.admin_email]
+  anomaly_threshold_amount      = "10"  # Alert on $10+ anomalies
+
+  # Monitoring
+  enable_cost_dashboard = true
+  enable_cost_alarms    = true
+  log_retention_days    = 7  # Match other CloudWatch log retention
   tags = local.common_tags
 }

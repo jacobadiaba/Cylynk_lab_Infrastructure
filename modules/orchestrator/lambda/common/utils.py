@@ -23,6 +23,11 @@ logger.setLevel(logging.INFO)
 PROJECT_NAME = os.environ.get("PROJECT_NAME", "cyberlab")
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 AWS_REGION = os.environ.get("AWS_REGION_NAME", "us-east-1")
+DEFAULT_PLAN_LIMITS = {
+    "freemium": 300,  # 5 hours
+    "starter": 900,   # 15 hours
+    "pro": -1,        # unlimited
+}
 
 # Session statuses
 class SessionStatus:
@@ -199,6 +204,201 @@ class DynamoDBClient:
         except ClientError as e:
             logger.error(f"DynamoDB query error: {e}")
             return []
+    
+    def query_user_sessions(self, user_id: str, limit: int = 50, status_filter: Optional[str] = None) -> list:
+        """
+        Query all sessions for a specific user using the StudentIndex GSI.
+        
+        Args:
+            user_id: The student/user ID to query sessions for
+            limit: Maximum number of sessions to return
+            status_filter: Optional status to filter by (e.g., 'terminated', 'ready')
+        
+        Returns:
+            List of session items from DynamoDB
+        """
+        try:
+            query_kwargs = {
+                "IndexName": "StudentIndex",
+                "KeyConditionExpression": Key("student_id").eq(user_id),
+                "Limit": limit,
+                "ScanIndexForward": False,  # Most recent first
+            }
+            
+            # Add status filter if provided
+            if status_filter:
+                query_kwargs["FilterExpression"] = Attr("status").eq(status_filter)
+            
+            response = self.table.query(**query_kwargs)
+            return response.get("Items", [])
+        except ClientError as e:
+            logger.error(f"DynamoDB query_user_sessions error: {e}")
+            return []
+
+
+class UsageTracker:
+    """Tracks per-user monthly usage for AttackBox sessions."""
+
+    def __init__(self, table_name: str):
+        self.table_name = table_name
+        self.dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
+        self.table = self.dynamodb.Table(table_name)
+
+    @staticmethod
+    def current_month() -> str:
+        """Return current month as YYYY-MM in UTC."""
+        return datetime.now(timezone.utc).strftime("%Y-%m")
+
+    def get_usage_minutes(self, user_id: str, usage_month: str) -> int:
+        """Return consumed minutes for a user/month."""
+        try:
+            resp = self.table.get_item(Key={"user_id": user_id, "usage_month": usage_month})
+            item = resp.get("Item", {}) or {}
+            consumed = item.get("consumed_minutes", 0)
+            try:
+                return int(consumed)
+            except (TypeError, ValueError):
+                return 0
+        except ClientError as e:
+            logger.error(f"DynamoDB get usage error: {e}")
+            return 0
+
+    def add_usage_minutes(
+        self,
+        user_id: str,
+        usage_month: str,
+        minutes: int,
+        plan: Optional[str] = None,
+        quota_minutes: Optional[int] = None,
+    ) -> Optional[int]:
+        """
+        Add minutes to the user's monthly usage. Returns new total or None on failure.
+        """
+        try:
+            update_expr = "SET updated_at = :updated_at"
+            expr_values = {
+                ":updated_at": get_current_timestamp(),
+                ":minutes": Decimal(str(minutes)),
+                ":one": Decimal("1"),
+            }
+            expr_names = {}
+
+            if plan:
+                expr_names["#plan"] = "plan"
+                expr_values[":plan"] = plan
+                update_expr += ", #plan = if_not_exists(#plan, :plan)"
+
+            if quota_minutes is not None:
+                expr_names["#quota"] = "quota_minutes"
+                expr_values[":quota"] = quota_minutes
+                update_expr += ", #quota = if_not_exists(#quota, :quota)"
+
+            response = self.table.update_item(
+                Key={"user_id": user_id, "usage_month": usage_month},
+                UpdateExpression=f"{update_expr} ADD consumed_minutes :minutes, session_count :one",
+                ExpressionAttributeNames=expr_names or None,
+                ExpressionAttributeValues=expr_values,
+                ReturnValues="UPDATED_NEW",
+            )
+
+            attributes = response.get("Attributes", {})
+            consumed = attributes.get("consumed_minutes")
+            try:
+                return int(consumed)
+            except (TypeError, ValueError):
+                return None
+        except ClientError as e:
+            logger.error(f"DynamoDB update usage error: {e}")
+            return None
+
+    def is_over_quota(self, user_id: str, usage_month: str, quota_minutes: int) -> Dict[str, int]:
+        """Check if user has exceeded quota. Returns dict with used and remaining."""
+        used = self.get_usage_minutes(user_id, usage_month)
+        remaining = quota_minutes - used
+        return {"used": used, "remaining": remaining}
+
+    def check_quota(self, user_id: str, quota_minutes: int) -> Dict[str, Any]:
+        """
+        Check if user can start a new session based on quota.
+        Returns dict with allowed, consumed_minutes, remaining_minutes, resets_at.
+        """
+        if quota_minutes == -1:
+            # Unlimited quota
+            return {
+                "allowed": True,
+                "consumed_minutes": 0,
+                "remaining_minutes": -1,
+                "resets_at": None,
+            }
+
+        usage_month = self.current_month()
+        consumed = self.get_usage_minutes(user_id, usage_month)
+        remaining = quota_minutes - consumed
+
+        # Calculate reset date (first day of next month)
+        now = datetime.now(timezone.utc)
+        if now.month == 12:
+            next_month = datetime(now.year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            next_month = datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc)
+
+        return {
+            "allowed": remaining > 0,
+            "consumed_minutes": consumed,
+            "remaining_minutes": max(0, remaining),
+            "resets_at": next_month.isoformat(),
+        }
+
+    def record_usage(self, user_id: str, minutes: int, plan: str = "freemium", quota_minutes: int = 300) -> bool:
+        """
+        Record usage for a user. Returns True on success.
+        """
+        usage_month = self.current_month()
+        result = self.add_usage_minutes(user_id, usage_month, minutes, plan, quota_minutes)
+        return result is not None
+
+    def get_usage_stats(self, user_id: str, plan: str, quota_minutes: int) -> Dict[str, Any]:
+        """
+        Get comprehensive usage statistics for a user.
+        Returns dict with user_id, plan, quota, consumed, remaining, session_count, resets_at.
+        """
+        usage_month = self.current_month()
+        
+        # Get usage data from DynamoDB
+        try:
+            resp = self.table.get_item(Key={"user_id": user_id, "usage_month": usage_month})
+            item = resp.get("Item", {})
+            consumed = int(item.get("consumed_minutes", 0)) if item else 0
+            session_count = int(item.get("session_count", 0)) if item else 0
+        except (ClientError, TypeError, ValueError) as e:
+            logger.error(f"Error getting usage stats: {e}")
+            consumed = 0
+            session_count = 0
+
+        # Calculate remaining
+        if quota_minutes == -1:
+            remaining = -1
+        else:
+            remaining = max(0, quota_minutes - consumed)
+
+        # Calculate reset date
+        now = datetime.now(timezone.utc)
+        if now.month == 12:
+            next_month = datetime(now.year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            next_month = datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc)
+
+        return {
+            "user_id": user_id,
+            "usage_month": usage_month,
+            "plan": plan,
+            "quota_minutes": quota_minutes,
+            "consumed_minutes": consumed,
+            "remaining_minutes": remaining,
+            "session_count": session_count,
+            "resets_at": next_month.isoformat(),
+        }
+
 
 
 class EC2Client:
@@ -209,13 +409,80 @@ class EC2Client:
         self.ec2_resource = boto3.resource("ec2", region_name=AWS_REGION)
     
     def get_instance_status(self, instance_id: str) -> Optional[Dict[str, Any]]:
-        """Get EC2 instance status."""
+        """Get EC2 instance status with health checks."""
         try:
+            # Get basic instance info
             response = self.ec2.describe_instances(InstanceIds=[instance_id])
             reservations = response.get("Reservations", [])
-            if reservations and reservations[0].get("Instances"):
-                return reservations[0]["Instances"][0]
-            return None
+            if not reservations or not reservations[0].get("Instances"):
+                return None
+            
+            instance = reservations[0]["Instances"][0]
+            
+            # Get instance status checks (system + instance reachability)
+            try:
+                status_response = self.ec2.describe_instance_status(
+                    InstanceIds=[instance_id],
+                    IncludeAllInstances=False  # Only running instances
+                )
+                
+                if status_response.get("InstanceStatuses"):
+                    status_info = status_response["InstanceStatuses"][0]
+                    
+                    # Extract status check results
+                    system_status_obj = status_info.get("SystemStatus", {})
+                    instance_status_obj = status_info.get("InstanceStatus", {})
+                    
+                    system_status = system_status_obj.get("Status", "unknown")
+                    instance_status = instance_status_obj.get("Status", "unknown")
+                    
+                    # Get detailed checks (this is what shows as 3/3 in console)
+                    system_details = system_status_obj.get("Details", [])
+                    instance_details = instance_status_obj.get("Details", [])
+                    
+                    # Count passed checks
+                    total_checks = len(system_details) + len(instance_details)
+                    passed_checks = sum(
+                        1 for check in (system_details + instance_details)
+                        if check.get("Status") == "passed"
+                    )
+                    
+                    # Consider "insufficient-data" as acceptable (status checks may not report immediately)
+                    # Only "impaired" or "failed" is a real failure
+                    system_ok = system_status in ["ok", "insufficient-data", "not-applicable"]
+                    instance_ok = instance_status in ["ok", "insufficient-data", "not-applicable"]
+                    
+                    # All passed if both statuses OK or all individual checks passed
+                    all_passed = (system_ok and instance_ok) or (total_checks > 0 and passed_checks == total_checks)
+                    
+                    # Add health check info to instance data
+                    instance["HealthChecks"] = {
+                        "system_status": system_status,
+                        "instance_status": instance_status,
+                        "passed_checks": passed_checks,
+                        "total_checks": total_checks,
+                        "all_passed": all_passed
+                    }
+                    
+                    logger.info(f"Instance {instance_id} health: {passed_checks}/{total_checks} checks passed, "
+                               f"system={system_status}, instance={instance_status}")
+                else:
+                    # Instance exists but no status checks yet (likely just started)
+                    instance["HealthChecks"] = {
+                        "system_status": "initializing",
+                        "instance_status": "initializing",
+                        "all_passed": False
+                    }
+            except ClientError as status_error:
+                logger.warning(f"Could not get status checks for {instance_id}: {status_error}")
+                # Instance might not be running yet
+                instance["HealthChecks"] = {
+                    "system_status": "unknown",
+                    "instance_status": "unknown",
+                    "all_passed": False
+                }
+            
+            return instance
         except ClientError as e:
             logger.error(f"EC2 describe_instances error: {e}")
             return None

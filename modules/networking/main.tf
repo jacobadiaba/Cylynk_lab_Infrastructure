@@ -227,6 +227,37 @@ resource "aws_flow_log" "main" {
   )
 }
 
+# Security Group for VPC Endpoints (Interface type)
+resource "aws_security_group" "vpc_endpoints" {
+  count       = var.enable_vpc_endpoints ? 1 : 0
+  name        = "${var.project_name}-${var.environment}-vpc-endpoints-sg"
+  description = "Security group for VPC interface endpoints"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "HTTPS from VPC"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-${var.environment}-vpc-endpoints-sg"
+    }
+  )
+}
+
 # VPC Endpoints (optional, for cost optimization)
 resource "aws_vpc_endpoint" "s3" {
   count        = var.enable_vpc_endpoints ? 1 : 0
@@ -244,13 +275,29 @@ resource "aws_vpc_endpoint" "s3" {
   )
 }
 
+resource "aws_vpc_endpoint" "dynamodb" {
+  count        = var.enable_vpc_endpoints ? 1 : 0
+  vpc_id       = aws_vpc.main.id
+  service_name = "com.amazonaws.${var.aws_region}.dynamodb"
+  route_table_ids = [
+    aws_route_table.private.id
+  ]
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-${var.environment}-dynamodb-endpoint"
+    }
+  )
+}
+
 resource "aws_vpc_endpoint" "ec2" {
   count               = var.enable_vpc_endpoints ? 1 : 0
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.aws_region}.ec2"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = [aws_subnet.management.id]
-  security_group_ids  = var.vpc_endpoint_security_group_ids
+  security_group_ids  = [aws_security_group.vpc_endpoints[0].id]
   private_dns_enabled = true
 
   tags = merge(

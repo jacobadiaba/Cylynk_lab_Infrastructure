@@ -58,6 +58,63 @@ if ($hassiteconfig) {
         get_string('settings:sessionheading_desc', 'local_attackbox')
     ));
 
+    // Role-based quota mapping.
+    $settings->add(new admin_setting_heading(
+        'local_attackbox/quotaheading',
+        get_string('settings:quotaheading', 'local_attackbox'),
+        get_string('settings:quotaheading_desc', 'local_attackbox')
+    ));
+
+    // Role shortnames for plans.
+    $settings->add(new admin_setting_configtext(
+        'local_attackbox/role_freemium_shortname',
+        get_string('settings:role_freemium', 'local_attackbox'),
+        get_string('settings:role_freemium_desc', 'local_attackbox'),
+        'freemium',
+        PARAM_ALPHANUMEXT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_attackbox/role_starter_shortname',
+        get_string('settings:role_starter', 'local_attackbox'),
+        get_string('settings:role_starter_desc', 'local_attackbox'),
+        'starter',
+        PARAM_ALPHANUMEXT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_attackbox/role_pro_shortname',
+        get_string('settings:role_pro', 'local_attackbox'),
+        get_string('settings:role_pro_desc', 'local_attackbox'),
+        'pro',
+        PARAM_ALPHANUMEXT
+    ));
+
+    // Monthly quota (minutes) for each plan (-1 for unlimited).
+    $settings->add(new admin_setting_configtext(
+        'local_attackbox/limit_freemium_minutes',
+        get_string('settings:limit_freemium', 'local_attackbox'),
+        get_string('settings:limit_freemium_desc', 'local_attackbox'),
+        '300',
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_attackbox/limit_starter_minutes',
+        get_string('settings:limit_starter', 'local_attackbox'),
+        get_string('settings:limit_starter_desc', 'local_attackbox'),
+        '900',
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_attackbox/limit_pro_minutes',
+        get_string('settings:limit_pro', 'local_attackbox'),
+        get_string('settings:limit_pro_desc', 'local_attackbox'),
+        '-1',
+        PARAM_INT
+    ));
+
     // Session TTL (for display purposes).
     $settings->add(new admin_setting_configtext(
         'local_attackbox/session_ttl_hours',

@@ -10,7 +10,7 @@ variable "project_name" {
 variable "environment" {
   description = "Environment name (dev, staging, production)"
   type        = string
-  default     = "dev"
+  default     = "production"
 }
 
 variable "aws_region" {
@@ -193,19 +193,19 @@ variable "attackbox_instance_type" {
 variable "attackbox_pool_size" {
   description = "Desired number of AttackBox instances"
   type        = number
-  default     = 1
+
 }
 
 variable "attackbox_min_pool_size" {
   description = "Minimum number of AttackBox instances"
   type        = number
-  default     = 1
+ 
 }
 
 variable "attackbox_max_pool_size" {
   description = "Maximum number of AttackBox instances"
   type        = number
-  default     = 5
+
 }
 
 # Orchestrator Configuration

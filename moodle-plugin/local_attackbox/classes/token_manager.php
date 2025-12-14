@@ -41,6 +41,13 @@ class token_manager {
     /** @var int Token validity period in seconds. */
     private $validity;
 
+    /** @var array Default monthly quota minutes per plan. */
+    private $default_plan_limits = [
+        'freemium' => 300, // 5 hours
+        'starter' => 900,  // 15 hours
+        'pro' => -1,       // unlimited
+    ];
+
     /**
      * Constructor.
      *
@@ -72,12 +79,18 @@ class token_manager {
             'firstname' => $user->firstname,
             'lastname' => $user->lastname,
             'fullname' => fullname($user),
+            'roles' => $this->get_user_role_shortnames($user),
             'timestamp' => $now,
             'expires' => $now + $this->validity,
             'nonce' => $this->generate_nonce(),
             'issuer' => 'moodle',
             'site_url' => $this->get_site_url(),
         ];
+
+        // Attach plan/quota info for orchestrator enforcement.
+        [$plan, $quota_minutes] = $this->resolve_plan_and_quota($user);
+        $payload['plan'] = $plan;
+        $payload['quota_minutes'] = $quota_minutes;
 
         $payload_json = json_encode($payload, JSON_UNESCAPED_SLASHES);
         $payload_base64 = $this->base64url_encode($payload_json);
@@ -123,6 +136,67 @@ class token_manager {
     private function get_site_url(): string {
         global $CFG;
         return $CFG->wwwroot;
+    }
+
+    /**
+     * Resolve the user's plan and quota based on Moodle role shortnames.
+     *
+     * @param \stdClass $user Moodle user
+     * @return array [string $plan, int $quota_minutes]
+     */
+    public function resolve_plan_and_quota(\stdClass $user): array {
+        $roles = $this->get_user_role_shortnames($user);
+
+        $freemium_role = get_config('local_attackbox', 'role_freemium_shortname') ?: 'freemium';
+        $starter_role = get_config('local_attackbox', 'role_starter_shortname') ?: 'starter';
+        $pro_role = get_config('local_attackbox', 'role_pro_shortname') ?: 'pro';
+
+        $plan = 'freemium';
+        if (in_array($pro_role, $roles)) {
+            $plan = 'pro';
+        } else if (in_array($starter_role, $roles)) {
+            $plan = 'starter';
+        } else if (in_array($freemium_role, $roles)) {
+            $plan = 'freemium';
+        }
+
+        $quota_minutes = $this->get_plan_quota_minutes($plan);
+
+        return [$plan, $quota_minutes];
+    }
+
+    /**
+     * Get the configured monthly quota minutes for a plan.
+     *
+     * @param string $plan
+     * @return int
+     */
+    private function get_plan_quota_minutes(string $plan): int {
+        $config_key = "limit_{$plan}_minutes";
+        $configured = get_config('local_attackbox', $config_key);
+
+        if ($configured === null || $configured === false || $configured === '') {
+            return $this->default_plan_limits[$plan] ?? -1;
+        }
+
+        return (int) $configured;
+    }
+
+    /**
+     * Get Moodle role shortnames for the user at system context.
+     *
+     * @param \stdClass $user
+     * @return array
+     */
+    private function get_user_role_shortnames(\stdClass $user): array {
+        $roles = get_user_roles(\context_system::instance(), $user->id, true);
+        if (empty($roles)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(function($role) {
+            return $role->shortname ?? null;
+        }, $roles)));
     }
 
     /**

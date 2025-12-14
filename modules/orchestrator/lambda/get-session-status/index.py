@@ -78,8 +78,24 @@ def get_session_by_id(session_id: str, sessions_db, pool_db, ec2_client):
     if not session:
         return error_response(404, "Session not found")
     
+    # Store original status to detect changes
+    original_status = session.get("status")
+    
     # Enrich session with live instance status if applicable
     session = enrich_session_status(session, pool_db, ec2_client)
+    
+    # Persist status change if it was updated
+    if session.get("status") != original_status:
+        sessions_db.update_item(
+            {"session_id": session_id},
+            {
+                "status": session["status"],
+                "updated_at": get_current_timestamp(),
+                "instance_state": session.get("instance_state"),
+                "instance_ip": session.get("instance_ip"),
+            }
+        )
+        logger.info(f"Session {session_id} status updated: {original_status} -> {session['status']}")
     
     return success_response(
         format_session_response(session),
@@ -94,10 +110,25 @@ def get_sessions_by_student(student_id: str, sessions_db, pool_db, ec2_client):
     
     sessions = sessions_db.query_by_index("StudentIndex", "student_id", student_id)
     
-    # Enrich each session and filter to active ones
+    # Enrich each session and persist status updates
     enriched_sessions = []
     for session in sessions:
+        original_status = session.get("status")
         session = enrich_session_status(session, pool_db, ec2_client)
+        
+        # Persist status change if it was updated
+        if session.get("status") != original_status:
+            sessions_db.update_item(
+                {"session_id": session["session_id"]},
+                {
+                    "status": session["status"],
+                    "updated_at": get_current_timestamp(),
+                    "instance_state": session.get("instance_state"),
+                    "instance_ip": session.get("instance_ip"),
+                }
+            )
+            logger.info(f"Session {session['session_id']} status updated: {original_status} -> {session['status']}")
+        
         enriched_sessions.append(format_session_response(session))
     
     # Sort by created_at descending
@@ -125,9 +156,6 @@ def enrich_session_status(session: dict, pool_db, ec2_client) -> dict:
     """Enrich session with live instance status."""
     instance_id = session.get("instance_id")
     
-    if not instance_id:
-        return session
-    
     # Check if session has expired
     now = get_current_timestamp()
     expires_at = session.get("expires_at", 0)
@@ -135,6 +163,19 @@ def enrich_session_status(session: dict, pool_db, ec2_client) -> dict:
     if expires_at and now > expires_at:
         session["status"] = SessionStatus.TERMINATED
         session["termination_reason"] = "expired"
+        return session
+    
+    # If no instance assigned, check if session has been waiting too long
+    if not instance_id:
+        created_at = session.get("created_at", 0)
+        time_waiting = now - created_at
+        
+        # If session has been in provisioning for more than 3 minutes without an instance, mark as error
+        if time_waiting > 180 and session.get("status") == SessionStatus.PROVISIONING:
+            logger.error(f"Session {session.get('session_id')} stuck in provisioning without instance for {time_waiting}s")
+            session["status"] = SessionStatus.ERROR
+            session["error"] = "Failed to allocate instance. Please try again or contact support."
+        
         return session
     
     # Get live instance status
@@ -149,25 +190,53 @@ def enrich_session_status(session: dict, pool_db, ec2_client) -> dict:
     
     instance_state = instance_info.get("State", {}).get("Name", "unknown")
     instance_ip = instance_info.get("PrivateIpAddress")
+    health_checks = instance_info.get("HealthChecks", {})
     
-    # Update session based on instance state
+    # Update session based on instance state and health checks
     if instance_state == "running":
-        if session.get("status") == SessionStatus.PROVISIONING:
-            session["status"] = SessionStatus.READY
-        
         session["instance_ip"] = instance_ip
         session["instance_state"] = instance_state
         
-        # Build/update connection info
-        if instance_ip and "connection_info" not in session:
-            session["connection_info"] = {
-                "type": "guacamole",
-                "guacamole_url": f"https://{GUACAMOLE_PRIVATE_IP}/guacamole" if GUACAMOLE_PRIVATE_IP else None,
-                "instance_ip": instance_ip,
-                "rdp_port": 3389,
-                "vnc_port": 5901,
-                "ssh_port": 22,
-            }
+        # Store health check status for debugging
+        session["health_checks"] = {
+            "system_status": health_checks.get("system_status", "unknown"),
+            "instance_status": health_checks.get("instance_status", "unknown"),
+            "all_passed": health_checks.get("all_passed", False)
+        }
+        
+        # Calculate how long instance has been running
+        created_at = session.get("created_at", 0)
+        time_running = now - created_at  # seconds
+        
+        # Check if health checks passed OR timeout fallback (5 minutes)
+        health_passed = health_checks.get("all_passed", False)
+        timeout_fallback = time_running > 300  # 5 minutes
+        
+        if health_passed or timeout_fallback:
+            if session.get("status") == SessionStatus.PROVISIONING:
+                session["status"] = SessionStatus.READY
+                if timeout_fallback and not health_passed:
+                    logger.warning(
+                        f"Session {session.get('session_id')} marked ready after timeout. "
+                        f"Health checks: {health_checks}"
+                    )
+            
+            # Build/update connection info only when fully ready
+            if instance_ip and "connection_info" not in session:
+                session["connection_info"] = {
+                    "type": "guacamole",
+                    "guacamole_url": f"https://{GUACAMOLE_PRIVATE_IP}/guacamole" if GUACAMOLE_PRIVATE_IP else None,
+                    "instance_ip": instance_ip,
+                    "rdp_port": 3389,
+                    "vnc_port": 5901,
+                    "ssh_port": 22,
+                }
+        else:
+            # Instance running but health checks not passed yet
+            # Keep status as PROVISIONING to show "waiting for health checks"
+            if session.get("status") != SessionStatus.READY:
+                session["status"] = SessionStatus.PROVISIONING
+                session["provisioning_stage"] = "waiting_health_checks"
     
     elif instance_state == "pending":
         session["status"] = SessionStatus.PROVISIONING
@@ -205,6 +274,7 @@ def get_stage_info(session: dict) -> dict:
     status = session.get("status", "")
     instance_state = session.get("instance_state", "")
     connection_info = session.get("connection_info", {})
+    health_checks = session.get("health_checks", {})
     
     # Determine stage based on status and available info
     if status == SessionStatus.PENDING:
@@ -232,13 +302,46 @@ def get_stage_info(session: dict) -> dict:
                 "estimated_seconds": 40,
             }
         elif instance_state == "running":
-            # Instance running but session not yet ready
+            # Instance running - check health checks status
+            system_status = health_checks.get("system_status", "unknown")
+            instance_status = health_checks.get("instance_status", "unknown")
+            passed_checks = health_checks.get("passed_checks", 0)
+            total_checks = health_checks.get("total_checks", 3)
+            all_passed = health_checks.get("all_passed", False)
+            
+            if not all_passed:
+                # Health checks still in progress - show actual check count
+                if passed_checks == 0 or system_status == "initializing" or instance_status == "initializing":
+                    return {
+                        "stage": "waiting_health",
+                        "progress": 42,
+                        "message": "Initializing security protocols...",
+                        "estimated_seconds": 25,
+                    }
+                elif passed_checks > 0 and passed_checks < total_checks:
+                    # Show progress: 1/3, 2/3, etc.
+                    return {
+                        "stage": "waiting_health",
+                        "progress": 42 + (passed_checks * 3),  # 42, 45, 48
+                        "message": f"Configuring network interfaces... ({passed_checks}/{total_checks})",
+                        "estimated_seconds": 15,
+                    }
+                else:
+                    # Checks exist but status unknown
+                    return {
+                        "stage": "waiting_health",
+                        "progress": 42,
+                        "message": "Booting kernel modules...",
+                        "estimated_seconds": 25,
+                    }
+            
+            # Health checks passed - check connection setup
             if not connection_info:
                 return {
-                    "stage": "waiting_health",
-                    "progress": 42,
-                    "message": "Waiting for instance health check",
-                    "estimated_seconds": 25,
+                    "stage": "health_check_passed",
+                    "progress": 50,
+                    "message": "Loading penetration testing tools...",
+                    "estimated_seconds": 20,
                 }
             elif not connection_info.get("guacamole_connection_id"):
                 return {
