@@ -62,9 +62,15 @@ variable "student_lab_subnet_count" {
 }
 
 variable "enable_nat_gateway" {
-  description = "Enable NAT Gateway"
+  description = "Enable NAT Gateway (not needed if attackbox_public_subnet is true)"
   type        = bool
   default     = true
+}
+
+variable "attackbox_public_subnet" {
+  description = "Place AttackBox in public subnet (saves ~$35/month NAT cost, security groups protect instances)"
+  type        = bool
+  default     = false
 }
 
 variable "enable_flow_logs" {
@@ -184,38 +190,43 @@ variable "attackbox_ami_id" {
   type        = string
 }
 
-variable "attackbox_instance_type" {
-  description = "Instance type for AttackBox"
-  type        = string
-  default     = "t3.medium"
-}
-
-variable "attackbox_pool_size" {
-  description = "Desired number of AttackBox instances"
-  type        = number
-
-}
-
-variable "attackbox_min_pool_size" {
-  description = "Minimum number of AttackBox instances"
-  type        = number
- 
-}
-
-variable "attackbox_max_pool_size" {
-  description = "Maximum number of AttackBox instances"
-  type        = number
-
-}
-
-variable "warm_pool_min_size" {
-  description = "Minimum number of instances to keep in warm pool (stopped state)"
-  type        = number
-}
-
-variable "warm_pool_max_group_prepared_capacity" {
-  description = "Maximum combined capacity of running instances + warm pool instances"
-  type        = number
+# Tier-based AttackBox configuration
+variable "attackbox_tiers" {
+  description = "Configuration for each AttackBox tier (freemium, starter, pro)"
+  type = map(object({
+    instance_type = string
+    pool_size     = number
+    min_pool_size = number
+    max_pool_size = number
+    warm_pool_min = number
+    warm_pool_max = number
+  }))
+  default = {
+    freemium = {
+      instance_type = "t3.small"
+      pool_size     = 1
+      min_pool_size = 0
+      max_pool_size = 5
+      warm_pool_min = 2
+      warm_pool_max = 5
+    }
+    starter = {
+      instance_type = "t3.medium"
+      pool_size     = 1
+      min_pool_size = 0
+      max_pool_size = 5
+      warm_pool_min = 2
+      warm_pool_max = 5
+    }
+    pro = {
+      instance_type = "t3.large"
+      pool_size     = 2
+      min_pool_size = 1
+      max_pool_size = 10
+      warm_pool_min = 3
+      warm_pool_max = 8
+    }
+  }
 }
 
 # Orchestrator Configuration

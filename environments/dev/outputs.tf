@@ -39,17 +39,25 @@ output "guacamole_url" {
 }
 
 # =============================================================================
-# AttackBox Outputs
+# AttackBox Outputs - Multi-Tier Pools
 # =============================================================================
 
-output "attackbox_asg_name" {
-  description = "AttackBox Auto Scaling Group name"
-  value       = module.attackbox.autoscaling_group_name
+output "attackbox_pools" {
+  description = "AttackBox Auto Scaling Group names by tier"
+  value = {
+    freemium = module.attackbox_freemium.autoscaling_group_name
+    starter  = module.attackbox_starter.autoscaling_group_name
+    pro      = module.attackbox_pro.autoscaling_group_name
+  }
 }
 
-output "attackbox_pool_config" {
-  description = "AttackBox pool configuration"
-  value       = module.attackbox.pool_configuration
+output "attackbox_pool_configs" {
+  description = "AttackBox pool configurations by tier"
+  value = {
+    freemium = module.attackbox_freemium.pool_configuration
+    starter  = module.attackbox_starter.pool_configuration
+    pro      = module.attackbox_pro.pool_configuration
+  }
 }
 
 # =============================================================================

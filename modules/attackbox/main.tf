@@ -9,12 +9,16 @@ terraform {
 locals {
   ami_id = var.custom_ami_id != "" ? var.custom_ami_id : data.aws_ami.kali.id
   
+  # Include tier in naming for multi-pool support
+  name_prefix = "${var.project_name}-${var.environment}-attackbox-${var.tier}"
+  
   common_tags = merge(
     var.tags,
     {
-      Name        = "${var.project_name}-${var.environment}-attackbox-pool"
+      Name        = "${local.name_prefix}-pool"
       Component   = "AttackBox"
       Environment = var.environment
+      Tier        = var.tier
     }
   )
 }
@@ -64,21 +68,22 @@ data "aws_ami" "custom_attackbox" {
 
 # CloudWatch Log Group for AttackBox
 resource "aws_cloudwatch_log_group" "attackbox" {
-  name              = "/cyberlab/${var.environment}/attackbox"
+  name              = "/cyberlab/${var.environment}/attackbox-${var.tier}"
   retention_in_days = var.log_retention_days
 
   tags = merge(
     var.tags,
     {
-      Name = "${var.project_name}-${var.environment}-attackbox-logs"
+      Name = "${local.name_prefix}-logs"
+      Tier = var.tier
     }
   )
 }
 
 # Launch Template for AttackBox instances
 resource "aws_launch_template" "attackbox" {
-  name_prefix   = "${var.project_name}-${var.environment}-attackbox-"
-  description   = "Launch template for AttackBox instances"
+  name_prefix   = "${local.name_prefix}-"
+  description   = "Launch template for AttackBox ${var.tier} tier instances"
   image_id      = var.use_custom_ami && length(data.aws_ami.custom_attackbox) > 0 ? data.aws_ami.custom_attackbox[0].id : local.ami_id
   instance_type = var.instance_type
   key_name      = var.key_name
@@ -119,6 +124,7 @@ resource "aws_launch_template" "attackbox" {
       local.common_tags,
       {
         Role = "AttackBox"
+        Tier = var.tier
       }
     )
   }
@@ -129,6 +135,7 @@ resource "aws_launch_template" "attackbox" {
       local.common_tags,
       {
         Role = "AttackBox"
+        Tier = var.tier
       }
     )
   }
@@ -142,7 +149,7 @@ resource "aws_launch_template" "attackbox" {
 
 # Auto Scaling Group for AttackBox pool
 resource "aws_autoscaling_group" "attackbox_pool" {
-  name                = "${var.project_name}-${var.environment}-attackbox-pool"
+  name                = "${local.name_prefix}-pool"
   vpc_zone_identifier = var.subnet_ids
   
   desired_capacity = var.pool_size
@@ -195,7 +202,7 @@ resource "aws_autoscaling_group" "attackbox_pool" {
 
   tag {
     key                 = "Name"
-    value               = "${var.project_name}-${var.environment}-attackbox"
+    value               = "${local.name_prefix}"
     propagate_at_launch = true
   }
 
@@ -218,6 +225,12 @@ resource "aws_autoscaling_group" "attackbox_pool" {
   }
 
   tag {
+    key                 = "Tier"
+    value               = var.tier
+    propagate_at_launch = true
+  }
+
+  tag {
     key                 = "ManagedBy"
     value               = "Terraform"
     propagate_at_launch = true
@@ -232,7 +245,7 @@ resource "aws_autoscaling_group" "attackbox_pool" {
 # Auto Scaling Policy - Scale Up
 resource "aws_autoscaling_policy" "scale_up" {
   count                  = var.enable_auto_scaling ? 1 : 0
-  name                   = "${var.project_name}-${var.environment}-attackbox-scale-up"
+  name                   = "${local.name_prefix}-scale-up"
   scaling_adjustment     = var.scale_up_adjustment
   adjustment_type        = "ChangeInCapacity"
   cooldown               = var.scale_up_cooldown
@@ -242,7 +255,7 @@ resource "aws_autoscaling_policy" "scale_up" {
 # Auto Scaling Policy - Scale Down
 resource "aws_autoscaling_policy" "scale_down" {
   count                  = var.enable_auto_scaling ? 1 : 0
-  name                   = "${var.project_name}-${var.environment}-attackbox-scale-down"
+  name                   = "${local.name_prefix}-scale-down"
   scaling_adjustment     = var.scale_down_adjustment
   adjustment_type        = "ChangeInCapacity"
   cooldown               = var.scale_down_cooldown
@@ -252,7 +265,7 @@ resource "aws_autoscaling_policy" "scale_down" {
 # CloudWatch Alarm - High CPU (trigger scale up)
 resource "aws_cloudwatch_metric_alarm" "cpu_high" {
   count               = var.enable_auto_scaling ? 1 : 0
-  alarm_name          = "${var.project_name}-${var.environment}-attackbox-cpu-high"
+  alarm_name          = "${local.name_prefix}-cpu-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "CPUUtilization"
@@ -260,20 +273,20 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
   period              = "300"
   statistic           = "Average"
   threshold           = "70"
-  alarm_description   = "Trigger scale up when CPU is high"
+  alarm_description   = "Trigger scale up when CPU is high for ${var.tier} tier"
   alarm_actions       = [aws_autoscaling_policy.scale_up[0].arn]
 
   dimensions = {
     AutoScalingGroupName = aws_autoscaling_group.attackbox_pool.name
   }
 
-  tags = var.tags
+  tags = merge(var.tags, { Tier = var.tier })
 }
 
 # CloudWatch Alarm - Low CPU (trigger scale down)
 resource "aws_cloudwatch_metric_alarm" "cpu_low" {
   count               = var.enable_auto_scaling ? 1 : 0
-  alarm_name          = "${var.project_name}-${var.environment}-attackbox-cpu-low"
+  alarm_name          = "${local.name_prefix}-cpu-low"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "CPUUtilization"
@@ -281,14 +294,14 @@ resource "aws_cloudwatch_metric_alarm" "cpu_low" {
   period              = "300"
   statistic           = "Average"
   threshold           = "20"
-  alarm_description   = "Trigger scale down when CPU is low"
+  alarm_description   = "Trigger scale down when CPU is low for ${var.tier} tier"
   alarm_actions       = [aws_autoscaling_policy.scale_down[0].arn]
 
   dimensions = {
     AutoScalingGroupName = aws_autoscaling_group.attackbox_pool.name
   }
 
-  tags = var.tags
+  tags = merge(var.tags, { Tier = var.tier })
 }
 
 # Scheduled scaling removed - users are global with different timezones
@@ -297,12 +310,13 @@ resource "aws_cloudwatch_metric_alarm" "cpu_low" {
 # SNS Topic for AttackBox notifications (optional)
 resource "aws_sns_topic" "attackbox_notifications" {
   count = var.enable_notifications ? 1 : 0
-  name  = "${var.project_name}-${var.environment}-attackbox-notifications"
+  name  = "${local.name_prefix}-notifications"
 
   tags = merge(
     var.tags,
     {
-      Name = "${var.project_name}-${var.environment}-attackbox-notifications"
+      Name = "${local.name_prefix}-notifications"
+      Tier = var.tier
     }
   )
 }
@@ -323,9 +337,10 @@ resource "aws_autoscaling_notification" "attackbox_notifications" {
 }
 
 # DynamoDB Table for Session Management (optional)
+# Note: This is a legacy table - main session tracking is done via orchestrator module
 resource "aws_dynamodb_table" "sessions" {
   count          = var.enable_session_tracking ? 1 : 0
-  name           = "${var.project_name}-${var.environment}-attackbox-sessions"
+  name           = "${local.name_prefix}-sessions"
   billing_mode   = "PAY_PER_REQUEST"
   hash_key       = "session_id"
   range_key      = "timestamp"
@@ -376,7 +391,8 @@ resource "aws_dynamodb_table" "sessions" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.project_name}-${var.environment}-attackbox-sessions"
+      Name = "${local.name_prefix}-sessions"
+      Tier = var.tier
     }
   )
 }

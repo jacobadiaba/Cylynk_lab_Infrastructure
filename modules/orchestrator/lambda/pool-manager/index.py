@@ -33,16 +33,33 @@ logger.setLevel(logging.INFO)
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE")
 INSTANCE_POOL_TABLE = os.environ.get("INSTANCE_POOL_TABLE")
 USAGE_TABLE = os.environ.get("USAGE_TABLE")
-ASG_NAME = os.environ.get("ASG_NAME")
 PROJECT_NAME = os.environ.get("PROJECT_NAME", "cyberlab")
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
+
+# Multi-tier ASG configuration
+ASG_NAME_FREEMIUM = os.environ.get("ASG_NAME_FREEMIUM", "")
+ASG_NAME_STARTER = os.environ.get("ASG_NAME_STARTER", "")
+ASG_NAME_PRO = os.environ.get("ASG_NAME_PRO", "")
+
+# Map plan tiers to ASG names
+PLAN_ASG_MAP = {
+    "freemium": ASG_NAME_FREEMIUM,
+    "starter": ASG_NAME_STARTER,
+    "pro": ASG_NAME_PRO,
+}
+
+# Get all configured ASGs (filter out empty ones)
+def get_configured_asgs():
+    """Get list of configured ASG names with their plan tiers."""
+    return {plan: asg for plan, asg in PLAN_ASG_MAP.items() if asg}
 
 
 def handler(event, context):
     """
     Main handler for pool manager.
     
-    Triggered by EventBridge schedule (every 5 minutes).
+    Triggered by EventBridge schedule (every 1 minute).
+    Manages all tier-based pools (freemium, starter, pro).
     """
     logger.info(f"Pool manager triggered: {event}")
     
@@ -54,32 +71,41 @@ def handler(event, context):
         asg_client = AutoScalingClient()
         
         now = get_current_timestamp()
+        
+        # Get configured ASGs
+        configured_asgs = get_configured_asgs()
+        logger.info(f"Managing pools: {list(configured_asgs.keys())}")
+        
         results = {
             "expired_sessions_cleaned": 0,
             "orphaned_instances_released": 0,
-            "pool_synced": False,
-            "scaling_action": None,
+            "pools_synced": {},
+            "scaling_actions": {},
         }
         
-        # 1. Clean up expired sessions
+        # 1. Clean up expired sessions (applies to all plans)
         results["expired_sessions_cleaned"] = cleanup_expired_sessions(
             sessions_db, pool_db, ec2_client, now
         )
         
-        # 2. Sync instance pool with ASG
-        results["pool_synced"] = sync_instance_pool(
-            pool_db, ec2_client, asg_client, now
-        )
+        # 2. Sync instance pool with ASGs (for each tier)
+        for plan, asg_name in configured_asgs.items():
+            synced = sync_instance_pool_for_plan(
+                pool_db, ec2_client, asg_client, now, plan, asg_name
+            )
+            results["pools_synced"][plan] = synced
         
-        # 3. Release orphaned instances
+        # 3. Release orphaned instances (applies to all plans)
         results["orphaned_instances_released"] = release_orphaned_instances(
             sessions_db, pool_db, ec2_client, now
         )
         
-        # 4. Check if we need to scale
-        results["scaling_action"] = manage_scaling(
-            sessions_db, pool_db, asg_client
-        )
+        # 4. Check if we need to scale (for each tier)
+        for plan, asg_name in configured_asgs.items():
+            action = manage_scaling_for_plan(
+                sessions_db, pool_db, asg_client, plan, asg_name
+            )
+            results["scaling_actions"][plan] = action
         
         logger.info(f"Pool manager completed: {results}")
         
@@ -166,20 +192,24 @@ def cleanup_expired_sessions(sessions_db, pool_db, ec2_client, now: int) -> int:
     return cleaned
 
 
-def sync_instance_pool(pool_db, ec2_client, asg_client, now: int) -> bool:
-    """Sync the instance pool table with actual ASG instances."""
+def sync_instance_pool_for_plan(pool_db, ec2_client, asg_client, now: int, plan: str, asg_name: str) -> bool:
+    """Sync the instance pool table with actual ASG instances for a specific plan."""
     try:
+        logger.info(f"Syncing pool for plan '{plan}' with ASG '{asg_name}'")
+        
         # Get all instances in the ASG
-        asg_instances = asg_client.get_asg_instances(ASG_NAME)
+        asg_instances = asg_client.get_asg_instances(asg_name)
         asg_instance_ids = {inst["InstanceId"] for inst in asg_instances}
         
-        # Get current pool records
-        # Note: This is a scan - in production, consider pagination
-        pool_records = pool_db.query_by_index("StatusIndex", "status", InstanceStatus.AVAILABLE)
-        pool_records.extend(pool_db.query_by_index("StatusIndex", "status", InstanceStatus.ASSIGNED))
-        pool_records.extend(pool_db.query_by_index("StatusIndex", "status", InstanceStatus.STARTING))
+        # Get current pool records for this plan
+        all_pool_records = []
+        for status in [InstanceStatus.AVAILABLE, InstanceStatus.ASSIGNED, InstanceStatus.STARTING]:
+            records = pool_db.query_by_index("StatusIndex", "status", status)
+            # Filter by plan (default to "pro" for backward compatibility)
+            plan_records = [r for r in records if r.get("plan", "pro") == plan]
+            all_pool_records.extend(plan_records)
         
-        pool_instance_ids = {rec["instance_id"] for rec in pool_records}
+        pool_instance_ids = {rec["instance_id"] for rec in all_pool_records}
         
         # Add new instances to pool
         for asg_instance in asg_instances:
@@ -203,21 +233,22 @@ def sync_instance_pool(pool_db, ec2_client, asg_client, now: int) -> bool:
                     pool_db.put_item({
                         "instance_id": instance_id,
                         "status": pool_status,
+                        "plan": plan,  # Store plan tier
                         "discovered_at": now,
                         "instance_state": state,
                     })
                     
-                    logger.info(f"Added instance to pool: {instance_id} ({pool_status})")
+                    logger.info(f"Added instance to {plan} pool: {instance_id} ({pool_status})")
         
         # Remove instances no longer in ASG
-        for pool_record in pool_records:
+        for pool_record in all_pool_records:
             instance_id = pool_record["instance_id"]
             if instance_id not in asg_instance_ids:
                 pool_db.delete_item({"instance_id": instance_id})
-                logger.info(f"Removed instance from pool: {instance_id}")
+                logger.info(f"Removed instance from {plan} pool: {instance_id}")
         
         # Update instance states
-        for pool_record in pool_records:
+        for pool_record in all_pool_records:
             instance_id = pool_record["instance_id"]
             if instance_id in asg_instance_ids:
                 instance_info = ec2_client.get_instance_status(instance_id)
@@ -245,7 +276,7 @@ def sync_instance_pool(pool_db, ec2_client, asg_client, now: int) -> bool:
         return True
     
     except Exception as e:
-        logger.error(f"Error syncing instance pool: {e}")
+        logger.error(f"Error syncing instance pool for plan {plan}: {e}")
         return False
 
 
@@ -308,35 +339,36 @@ def release_orphaned_instances(sessions_db, pool_db, ec2_client, now: int) -> in
     return released
 
 
-def manage_scaling(sessions_db, pool_db, asg_client) -> dict:
-    """Check if we need to scale the ASG based on demand."""
-    action = {"type": None, "reason": None}
+def manage_scaling_for_plan(sessions_db, pool_db, asg_client, plan: str, asg_name: str) -> dict:
+    """Check if we need to scale the ASG based on demand for a specific plan."""
+    action = {"type": None, "reason": None, "plan": plan}
     
     try:
-        # Count active sessions
+        # Count active sessions for this plan
         active_count = 0
         for status in [SessionStatus.PENDING, SessionStatus.PROVISIONING,
                        SessionStatus.READY, SessionStatus.ACTIVE]:
             sessions = sessions_db.query_by_index("StatusIndex", "status", status)
-            active_count += len(sessions)
+            # Filter by plan (default to "pro" for backward compatibility)
+            plan_sessions = [s for s in sessions if s.get("plan", "pro") == plan]
+            active_count += len(plan_sessions)
         
-        # Count available instances
+        # Count available instances for this plan
         available_instances = pool_db.query_by_index("StatusIndex", "status", InstanceStatus.AVAILABLE)
-        available_count = len(available_instances)
+        available_count = len([i for i in available_instances if i.get("plan", "pro") == plan])
         
-        # Count instances that are already starting (being provisioned)
-        # This prevents duplicate scale-ups while instances are booting
+        # Count instances that are already starting for this plan
         starting_instances = pool_db.query_by_index("StatusIndex", "status", InstanceStatus.STARTING)
-        starting_count = len(starting_instances)
+        starting_count = len([i for i in starting_instances if i.get("plan", "pro") == plan])
         
-        # Count assigned instances (already serving sessions)
+        # Count assigned instances for this plan
         assigned_instances = pool_db.query_by_index("StatusIndex", "status", InstanceStatus.ASSIGNED)
-        assigned_count = len(assigned_instances)
+        assigned_count = len([i for i in assigned_instances if i.get("plan", "pro") == plan])
         
         # Get ASG capacity
-        capacity = asg_client.get_asg_capacity(ASG_NAME)
+        capacity = asg_client.get_asg_capacity(asg_name)
         
-        logger.info(f"Scaling check: active_sessions={active_count}, available={available_count}, "
+        logger.info(f"[{plan}] Scaling check: active_sessions={active_count}, available={available_count}, "
                     f"starting={starting_count}, assigned={assigned_count}, "
                     f"asg_desired={capacity['desired']}, asg_min={capacity['min']}, asg_max={capacity['max']}")
         
@@ -351,30 +383,32 @@ def manage_scaling(sessions_db, pool_db, asg_client) -> dict:
                 deficit = active_count - instances_in_progress
                 scale_amount = min(deficit, 2)
                 new_capacity = min(capacity["desired"] + scale_amount, capacity["max"])
-                if asg_client.set_desired_capacity(ASG_NAME, new_capacity):
+                if asg_client.set_desired_capacity(asg_name, new_capacity):
                     action = {
                         "type": "scale_up",
+                        "plan": plan,
                         "reason": f"Active sessions ({active_count}) > instances in progress ({instances_in_progress})",
                         "new_capacity": new_capacity,
                     }
-                    logger.info(f"Scaled up ASG to {new_capacity}")
+                    logger.info(f"[{plan}] Scaled up ASG {asg_name} to {new_capacity}")
         
         # Scale down if we have too many idle instances and no active sessions
         elif available_count > 2 and active_count == 0:
             # Keep at least min_size
             if capacity["desired"] > capacity["min"]:
                 new_capacity = max(capacity["desired"] - 1, capacity["min"])
-                if asg_client.set_desired_capacity(ASG_NAME, new_capacity):
+                if asg_client.set_desired_capacity(asg_name, new_capacity):
                     action = {
                         "type": "scale_down",
+                        "plan": plan,
                         "reason": "Too many idle instances",
                         "new_capacity": new_capacity,
                     }
-                    logger.info(f"Scaled down ASG to {new_capacity}")
+                    logger.info(f"[{plan}] Scaled down ASG {asg_name} to {new_capacity}")
         
         return action
     
     except Exception as e:
-        logger.error(f"Error managing scaling: {e}")
-        return {"type": "error", "reason": str(e)}
+        logger.error(f"Error managing scaling for plan {plan}: {e}")
+        return {"type": "error", "plan": plan, "reason": str(e)}
 

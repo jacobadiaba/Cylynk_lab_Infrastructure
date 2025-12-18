@@ -48,6 +48,25 @@ class InstanceStatus:
     UNHEALTHY = "unhealthy"
 
 
+# Plan tiers with instance type mapping
+class PlanTier:
+    FREEMIUM = "freemium"
+    STARTER = "starter"
+    PRO = "pro"
+    
+    # Instance types for each tier (cost-optimized)
+    INSTANCE_TYPES = {
+        "freemium": "t3.micro",   # 2 vCPU, 1GB - basic labs
+        "starter": "t3.small",    # 2 vCPU, 2GB - standard labs
+        "pro": "t3.medium",       # 2 vCPU, 4GB - advanced labs
+    }
+    
+    @classmethod
+    def get_instance_type(cls, plan: str) -> str:
+        """Get the instance type for a plan tier."""
+        return cls.INSTANCE_TYPES.get(plan, cls.INSTANCE_TYPES["freemium"])
+
+
 def generate_session_id() -> str:
     """Generate a unique session ID."""
     return f"sess-{uuid.uuid4().hex[:12]}"

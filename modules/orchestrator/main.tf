@@ -98,9 +98,23 @@ resource "aws_dynamodb_table" "instance_pool" {
     type = "S"
   }
 
+  attribute {
+    name = "plan"
+    type = "S"
+  }
+
+  # Query by status (e.g., get all AVAILABLE instances)
   global_secondary_index {
     name            = "StatusIndex"
     hash_key        = "status"
+    projection_type = "ALL"
+  }
+
+  # Query by plan and status (e.g., get all AVAILABLE freemium instances)
+  global_secondary_index {
+    name            = "PlanStatusIndex"
+    hash_key        = "plan"
+    range_key       = "status"
     projection_type = "ALL"
   }
 
@@ -354,7 +368,11 @@ resource "aws_lambda_function" "create_session" {
       SESSIONS_TABLE        = aws_dynamodb_table.sessions.name
       INSTANCE_POOL_TABLE   = aws_dynamodb_table.instance_pool.name
       USAGE_TABLE           = aws_dynamodb_table.usage.name
-      ASG_NAME              = var.attackbox_asg_name
+      # Multi-tier ASG configuration
+      ASG_NAME_FREEMIUM     = try(var.attackbox_pools["freemium"].asg_name, "")
+      ASG_NAME_STARTER      = try(var.attackbox_pools["starter"].asg_name, "")
+      ASG_NAME_PRO          = try(var.attackbox_pools["pro"].asg_name, "")
+      ATTACKBOX_POOLS       = jsonencode(var.attackbox_pools)
       GUACAMOLE_PRIVATE_IP  = var.guacamole_private_ip
       GUACAMOLE_PUBLIC_IP   = var.guacamole_public_ip
       GUACAMOLE_API_URL     = var.guacamole_api_url
@@ -464,6 +482,11 @@ resource "aws_lambda_function" "get_session_status" {
       SESSIONS_TABLE       = aws_dynamodb_table.sessions.name
       INSTANCE_POOL_TABLE  = aws_dynamodb_table.instance_pool.name
       USAGE_TABLE          = aws_dynamodb_table.usage.name
+      # Multi-tier ASG configuration
+      ASG_NAME_FREEMIUM    = try(var.attackbox_pools["freemium"].asg_name, "")
+      ASG_NAME_STARTER     = try(var.attackbox_pools["starter"].asg_name, "")
+      ASG_NAME_PRO         = try(var.attackbox_pools["pro"].asg_name, "")
+      ATTACKBOX_POOLS      = jsonencode(var.attackbox_pools)
       GUACAMOLE_PRIVATE_IP = var.guacamole_private_ip
       GUACAMOLE_PUBLIC_IP  = var.guacamole_public_ip
       GUACAMOLE_API_URL    = var.guacamole_api_url
@@ -518,7 +541,11 @@ resource "aws_lambda_function" "pool_manager" {
       SESSIONS_TABLE      = aws_dynamodb_table.sessions.name
       INSTANCE_POOL_TABLE = aws_dynamodb_table.instance_pool.name
       USAGE_TABLE         = aws_dynamodb_table.usage.name
-      ASG_NAME            = var.attackbox_asg_name
+      # Multi-tier ASG configuration
+      ASG_NAME_FREEMIUM   = try(var.attackbox_pools["freemium"].asg_name, "")
+      ASG_NAME_STARTER    = try(var.attackbox_pools["starter"].asg_name, "")
+      ASG_NAME_PRO        = try(var.attackbox_pools["pro"].asg_name, "")
+      ATTACKBOX_POOLS     = jsonencode(var.attackbox_pools)
       ENVIRONMENT         = var.environment
       PROJECT_NAME        = var.project_name
       AWS_REGION_NAME     = var.aws_region

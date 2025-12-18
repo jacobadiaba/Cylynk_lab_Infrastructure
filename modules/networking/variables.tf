@@ -54,9 +54,15 @@ variable "student_lab_subnet_count" {
 }
 
 variable "enable_nat_gateway" {
-  description = "Enable NAT Gateway for private subnets"
+  description = "Enable NAT Gateway for private subnets (not needed if attackbox_public_subnet is true)"
   type        = bool
   default     = true
+}
+
+variable "attackbox_public_subnet" {
+  description = "Place AttackBox instances in public subnet (saves NAT Gateway cost, uses security groups for protection)"
+  type        = bool
+  default     = false
 }
 
 variable "enable_flow_logs" {

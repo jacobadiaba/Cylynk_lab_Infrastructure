@@ -702,7 +702,7 @@ define(["jquery", "core/str"], function ($, Str) {
       const self = this;
       const pollInterval = this.config.pollInterval || 3000;
       let attempts = 0;
-      const maxAttempts = 120; // 6 minutes max
+      const maxAttempts = 200; // 10 minutes max (ASG scale-up + status checks can take 5-7 min)
 
       this.pollTimer = setInterval(async function () {
         attempts++;

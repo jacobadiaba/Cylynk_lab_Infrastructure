@@ -16,9 +16,10 @@ student_labs_cidr        = "10.1.100.0/20"
 student_lab_subnet_count = 5 # Fewer subnets in dev
 
 # Cost optimization - disable expensive features in dev
-enable_nat_gateway   = true  # Keep for testing
-enable_flow_logs     = false # Disable to save costs
-enable_vpc_endpoints = false # Disable to save costs
+enable_nat_gateway      = false  # Disabled - using public subnet for AttackBox instead (~$35/month savings)
+attackbox_public_subnet = true   # AttackBox in public subnet (security groups protect from internet)
+enable_flow_logs        = false  # Disable to save costs
+enable_vpc_endpoints    = true   # Enable for cost optimization (S3 & DynamoDB endpoints)
 
 # Security Configuration
 allowed_ssh_cidr       = "YOUR_IP/32" # CHANGE THIS!
@@ -46,11 +47,36 @@ enable_cost_anomaly_detection = false
 cost_anomaly_threshold        = 50 # Lower threshold for dev
 
 # AttackBox Configuration
-attackbox_ami_id        = ""           # Leave empty to use official Kali AMI, or set custom AMI ID
-attackbox_instance_type = "t3.medium"
-attackbox_pool_size     = 1
-attackbox_min_pool_size = 1
-attackbox_max_pool_size = 3
+attackbox_ami_id = "" # Leave empty to use official Kali AMI, or set custom AMI ID
+
+# Tier-based AttackBox configuration
+# Each tier has its own instance type and pool settings for cost optimization
+attackbox_tiers = {
+  freemium = {
+    instance_type = "t3.micro"   # 2 vCPU, 1GB RAM - sufficient for basic labs
+    pool_size     = 1
+    min_pool_size = 0
+    max_pool_size = 5
+    warm_pool_min = 2
+    warm_pool_max = 5
+  }
+  starter = {
+    instance_type = "t3.small"   # 2 vCPU, 2GB RAM - good for standard labs
+    pool_size     = 1
+    min_pool_size = 0
+    max_pool_size = 5
+    warm_pool_min = 2
+    warm_pool_max = 5
+  }
+  pro = {
+    instance_type = "t3.medium"  # 2 vCPU, 4GB RAM - handles 90% of advanced labs
+    pool_size     = 2
+    min_pool_size = 1
+    max_pool_size = 10
+    warm_pool_min = 3
+    warm_pool_max = 8
+  }
+}
 
 # Orchestrator Configuration
 session_ttl_hours            = 4     # Sessions expire after 4 hours
@@ -65,8 +91,12 @@ moodle_webhook_secret = "" # Set a secret for signed requests from Moodle
 guacamole_admin_username = "guacadmin"
 guacamole_admin_password = "" # Set the Guacamole admin password
 
-# Dev-specific notes:
-# - NAT Gateway: ~$35/month (keep for testing)
+# Cost notes:
+# - NAT Gateway: $0 (disabled - using public subnet for AttackBox)
 # - Guacamole t3.small: ~$15/month
 # - VPN t3.micro: ~$8/month
-# - AttackBox t3.medium: ~$30/month per instance (if running 24/7)
+# - AttackBox costs per tier (if running 24/7):
+#   - Freemium (t3.micro):  ~$8/month per instance
+#   - Starter (t3.small):   ~$15/month per instance
+#   - Pro (t3.medium):      ~$30/month per instance
+# - Warm pool instances are stopped (only EBS cost ~$4/month)

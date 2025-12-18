@@ -1,5 +1,10 @@
 # modules/attackbox/outputs.tf
 
+output "tier" {
+  description = "Plan tier for this AttackBox pool"
+  value       = var.tier
+}
+
 output "autoscaling_group_name" {
   description = "Name of the Auto Scaling Group"
   value       = aws_autoscaling_group.attackbox_pool.name
@@ -33,6 +38,7 @@ output "ami_name" {
 output "pool_configuration" {
   description = "Current pool configuration"
   value = {
+    tier             = var.tier
     desired_capacity = aws_autoscaling_group.attackbox_pool.desired_capacity
     min_size         = aws_autoscaling_group.attackbox_pool.min_size
     max_size         = aws_autoscaling_group.attackbox_pool.max_size
@@ -90,9 +96,10 @@ output "management_commands" {
 output "cost_estimation" {
   description = "Monthly cost estimation for the AttackBox pool"
   value = {
+    tier                  = var.tier
     stopped_storage       = "~$${var.pool_size * 0.10 * var.root_volume_size}/month (EBS storage)"
-    running_instance_cost = "$${var.instance_type == \"t3.medium\" ? \"0.0416\" : var.instance_type == \"t3.small\" ? \"0.0208\" : \"0.0104\"}/hour per instance"
-    pool_running_24x7     = "~$${var.pool_size * (var.instance_type == \"t3.medium\" ? 30 : var.instance_type == \"t3.small\" ? 15 : 7.5)}/month (if all running)"
+    running_instance_cost = "$${var.instance_type == \"t3.large\" ? \"0.0832\" : var.instance_type == \"t3.medium\" ? \"0.0416\" : var.instance_type == \"t3.small\" ? \"0.0208\" : \"0.0104\"}/hour per instance"
+    pool_running_24x7     = "~$${var.pool_size * (var.instance_type == \"t3.large\" ? 60 : var.instance_type == \"t3.medium\" ? 30 : var.instance_type == \"t3.small\" ? 15 : 7.5)}/month (if all running)"
     note                  = "Actual costs depend on usage patterns and how long instances run"
   }
 }

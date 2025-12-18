@@ -50,19 +50,20 @@ resource "aws_subnet" "management" {
   )
 }
 
-# Private Subnet - AttackBox Pool
+# AttackBox Pool Subnet (can be public or private based on configuration)
+# When public: saves ~$35/month on NAT Gateway, security groups still protect instances
 resource "aws_subnet" "attackbox_pool" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.attackbox_subnet_cidr
   availability_zone       = data.aws_availability_zones.available.names[0]
-  map_public_ip_on_launch = false
+  map_public_ip_on_launch = var.attackbox_public_subnet  # Enable public IP if public subnet
 
   tags = merge(
     var.tags,
     {
       Name = "${var.project_name}-${var.environment}-attackbox-subnet"
       Type = "AttackBox"
-      Tier = "Private"
+      Tier = var.attackbox_public_subnet ? "Public" : "Private"
     }
   )
 }
@@ -165,9 +166,10 @@ resource "aws_route_table_association" "management" {
 }
 
 # Route Table Association - AttackBox Pool Subnet
+# Uses public route table if attackbox_public_subnet is true (for direct internet access)
 resource "aws_route_table_association" "attackbox_pool" {
   subnet_id      = aws_subnet.attackbox_pool.id
-  route_table_id = aws_route_table.private.id
+  route_table_id = var.attackbox_public_subnet ? aws_route_table.public.id : aws_route_table.private.id
 }
 
 # Route Table Association - Student Lab Subnets

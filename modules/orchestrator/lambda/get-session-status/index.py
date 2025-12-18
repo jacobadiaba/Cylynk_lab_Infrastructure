@@ -12,6 +12,7 @@ import sys
 sys.path.insert(0, "/opt/python")
 
 from utils import (
+    AutoScalingClient,
     DynamoDBClient,
     EC2Client,
     GuacamoleClient,
@@ -19,6 +20,7 @@ from utils import (
     SessionStatus,
     error_response,
     get_current_timestamp,
+    get_iso_timestamp,
     get_path_parameter,
     success_response,
 )
@@ -36,6 +38,21 @@ GUACAMOLE_ADMIN_USER = os.environ.get("GUACAMOLE_ADMIN_USER", "guacadmin")
 GUACAMOLE_ADMIN_PASS = os.environ.get("GUACAMOLE_ADMIN_PASS", "guacadmin")
 RDP_USERNAME = os.environ.get("RDP_USERNAME", "kali")
 RDP_PASSWORD = os.environ.get("RDP_PASSWORD", "kali")
+
+# Multi-tier ASG configuration
+ASG_NAME_FREEMIUM = os.environ.get("ASG_NAME_FREEMIUM", "")
+ASG_NAME_STARTER = os.environ.get("ASG_NAME_STARTER", "")
+ASG_NAME_PRO = os.environ.get("ASG_NAME_PRO", "")
+
+
+def get_asg_for_plan(plan: str) -> str:
+    """Get the ASG name for a given plan tier."""
+    asg_map = {
+        "freemium": ASG_NAME_FREEMIUM,
+        "starter": ASG_NAME_STARTER,
+        "pro": ASG_NAME_PRO,
+    }
+    return asg_map.get(plan) or ASG_NAME_FREEMIUM or ASG_NAME_STARTER or ASG_NAME_PRO
 
 
 def get_guacamole_public_url() -> str:
@@ -202,12 +219,23 @@ def enrich_session_status(session: dict, pool_db, ec2_client) -> dict:
         created_at = session.get("created_at", 0)
         time_waiting = now - created_at
         
+        # Get the plan for this session (default to "pro" for backward compatibility)
+        session_plan = session.get("plan", "pro")
+        session_id = session.get("session_id")
+        student_id = session.get("student_id")
+        
         # Try to find an available instance for this waiting session
-        # Query for available instances in the pool
+        # First, check the pool table for AVAILABLE instances
         try:
-            available_instances = pool_db.query_by_index(
+            all_available = pool_db.query_by_index(
                 "StatusIndex", "status", InstanceStatus.AVAILABLE
             )
+            # Filter by plan to only get instances from the same tier
+            available_instances = [
+                inst for inst in all_available
+                if inst.get("plan", "pro") == session_plan
+            ]
+            logger.info(f"Found {len(available_instances)} available instances in pool for plan {session_plan}")
             
             if available_instances:
                 # Try to claim the first available instance
@@ -222,8 +250,8 @@ def enrich_session_status(session: dict, pool_db, ec2_client) -> dict:
                         {"instance_id": candidate_id},
                         {
                             "status": InstanceStatus.ASSIGNED,
-                            "session_id": session["session_id"],
-                            "student_id": session.get("student_id"),
+                            "session_id": session_id,
+                            "student_id": student_id,
                             "assigned_at": now,
                         },
                         condition_expression="#status = :available",
@@ -240,28 +268,121 @@ def enrich_session_status(session: dict, pool_db, ec2_client) -> dict:
                         session["instance_ip"] = instance_ip
                         session["updated_at"] = now
                         
-                        logger.info(f"Allocated instance {instance_id} to waiting session {session['session_id']} after {time_waiting}s")
-                        
-                        # Don't return yet - let the code below continue to check health
+                        logger.info(f"Allocated pool instance {instance_id} to session {session_id} after {time_waiting}s")
                     else:
                         logger.info(f"Failed to claim instance {candidate_id}, it was taken by another session")
         except Exception as e:
-            logger.warning(f"Error trying to allocate instance for waiting session: {str(e)}")
+            logger.warning(f"Error trying to allocate pool instance: {str(e)}")
+        
+        # If no pool instance found, check ASG directly for running instances
+        # This handles the case where pool-manager hasn't synced the instance yet
+        if not session.get("instance_id"):
+            try:
+                asg_name = get_asg_for_plan(session_plan)
+                if asg_name:
+                    asg_client = AutoScalingClient()
+                    asg_instances = asg_client.get_asg_instances(asg_name)
+                    logger.info(f"Checking ASG {asg_name} directly, found {len(asg_instances)} instances")
+                    
+                    for asg_instance in asg_instances:
+                        inst_id = asg_instance.get("InstanceId")
+                        lifecycle_state = asg_instance.get("LifecycleState")
+                        
+                        if lifecycle_state == "InService":
+                            instance_info = ec2_client.get_instance_status(inst_id)
+                            if instance_info:
+                                state = instance_info.get("State", {}).get("Name")
+                                health_checks = instance_info.get("HealthChecks", {})
+                                
+                                # Check pool record for this instance
+                                pool_record = pool_db.get_item({"instance_id": inst_id})
+                                pool_status = pool_record.get("status") if pool_record else None
+                                pool_session = pool_record.get("session_id") if pool_record else None
+                                
+                                logger.info(f"ASG instance {inst_id}: state={state}, health={health_checks.get('all_passed')}, pool_status={pool_status}, pool_session={pool_session}")
+                                
+                                if state == "running" and health_checks.get("all_passed", False):
+                                    # Check if instance is truly available
+                                    can_use = False
+                                    
+                                    if not pool_record:
+                                        can_use = True
+                                        logger.info(f"Instance {inst_id} has no pool record, claiming it")
+                                    elif pool_session == session_id:
+                                        # This instance is already assigned to THIS session!
+                                        can_use = True
+                                        logger.info(f"Instance {inst_id} is already assigned to current session {session_id}")
+                                    elif pool_status == InstanceStatus.AVAILABLE:
+                                        can_use = True
+                                        logger.info(f"Instance {inst_id} is AVAILABLE, claiming it")
+                                    elif pool_status in [InstanceStatus.STARTING, InstanceStatus.ASSIGNED]:
+                                        # Check if the assigned session is still valid
+                                        if pool_session:
+                                            from utils import DynamoDBClient
+                                            sessions_db_check = DynamoDBClient(os.environ.get("SESSIONS_TABLE"))
+                                            existing_session = sessions_db_check.get_item({"session_id": pool_session})
+                                            if not existing_session:
+                                                can_use = True
+                                                logger.info(f"Instance {inst_id} assigned to non-existent session {pool_session}, reclaiming")
+                                            elif existing_session.get("status") in [SessionStatus.TERMINATED, SessionStatus.ERROR]:
+                                                can_use = True
+                                                logger.info(f"Instance {inst_id} assigned to {existing_session.get('status')} session {pool_session}, reclaiming")
+                                            else:
+                                                logger.info(f"Instance {inst_id} is assigned to active session {pool_session} (status: {existing_session.get('status')}), skipping")
+                                        else:
+                                            # No session assigned, might be in STARTING state from pool-manager
+                                            can_use = True
+                                            logger.info(f"Instance {inst_id} has status {pool_status} but no session, claiming it")
+                                    else:
+                                        logger.info(f"Instance {inst_id} has unhandled status {pool_status}, skipping")
+                                    
+                                    if can_use:
+                                        # Claim this instance
+                                        instance_ip = instance_info.get("PrivateIpAddress")
+                                        
+                                        pool_db.put_item({
+                                            "instance_id": inst_id,
+                                            "status": InstanceStatus.ASSIGNED,
+                                            "session_id": session_id,
+                                            "student_id": student_id,
+                                            "assigned_at": now,
+                                            "plan": session_plan,
+                                        })
+                                        
+                                        # Tag the instance
+                                        ec2_client.tag_instance(inst_id, {
+                                            "SessionId": session_id,
+                                            "StudentId": student_id,
+                                            "AssignedAt": get_iso_timestamp(),
+                                        })
+                                        
+                                        session["instance_id"] = inst_id
+                                        session["instance_ip"] = instance_ip
+                                        session["updated_at"] = now
+                                        
+                                        logger.info(f"Allocated ASG instance {inst_id} to session {session_id} after {time_waiting}s")
+                                        break
+            except Exception as e:
+                logger.warning(f"Error trying to allocate ASG instance: {str(e)}")
         
         # If still no instance after trying to allocate, check timeout
         if not session.get("instance_id"):
-            # If session has been in provisioning for more than 5 minutes without an instance, mark as error
-            # Warm pool instances take 30-60s to start + 60-120s for status checks = up to 3 minutes
-            # ASG scale-up can take 3-5 minutes for new instances
-            if time_waiting > 300:
-                logger.error(f"Session {session.get('session_id')} stuck in provisioning without instance for {time_waiting}s")
+            # If session has been in provisioning for more than 8 minutes without an instance, mark as error
+            # Timeline: Instance start (30-60s) + Status checks (4-5 min) = up to 6 minutes
+            # ASG scale-up can take 3-5 minutes for new instances + status checks
+            if time_waiting > 480:  # 8 minutes
+                logger.error(f"Session {session_id} stuck in provisioning without instance for {time_waiting}s")
                 session["status"] = SessionStatus.ERROR
                 session["error"] = "Instance allocation timed out. The system may be at capacity. Please try again in a moment."
-            elif time_waiting > 240:
-                # Warn at 4 minutes but don't fail yet
-                logger.warning(f"Session {session.get('session_id')} still waiting for instance after {time_waiting}s")
+            elif time_waiting > 360:  # 6 minutes
+                # Warn at 6 minutes but don't fail yet
+                logger.warning(f"Session {session_id} still waiting for instance after {time_waiting}s")
             
             return session
+        else:
+            # Instance was just allocated - update local variable to continue processing
+            instance_id = session.get("instance_id")
+            logger.info(f"Continuing with newly allocated instance {instance_id}")
     
     # If no instance_id but session has instance_ip (edge case from previous allocation)
     # Try to create Guacamole connection with the existing IP
@@ -551,23 +672,43 @@ def get_stage_info(session: dict) -> dict:
             return {
                 "stage": "instance_claimed",
                 "progress": 18,
-                "message": "Instance assigned, preparing to start",
+                "message": "AttackBox assigned! Preparing your environment...",
                 "estimated_seconds": 45,
             }
         else:
             return {
                 "stage": "finding_instance",
                 "progress": 10,
-                "message": "Finding available instance",
+                "message": "Looking for an available AttackBox...",
                 "estimated_seconds": 55,
             }
     
     elif status == SessionStatus.PROVISIONING:
+        # Check if there's a provisioning note that explains why we're waiting
+        provisioning_note = session.get("provisioning_note", "")
+        
+        # No instance assigned yet - all running instances are in use
+        if not session.get("instance_id") and not session.get("instance_ip"):
+            if "ASG" in provisioning_note or "new instance" in provisioning_note.lower():
+                return {
+                    "stage": "scaling_up",
+                    "progress": 15,
+                    "message": "All AttackBoxes are in use. Starting a new instance for you (this may take 2-3 minutes)...",
+                    "estimated_seconds": 180,
+                }
+            else:
+                return {
+                    "stage": "finding_instance",
+                    "progress": 10,
+                    "message": "All running instances are busy. Starting a warm pool instance (30-60 seconds)...",
+                    "estimated_seconds": 60,
+                }
+        
         if instance_state == "pending":
             return {
                 "stage": "instance_starting",
                 "progress": 25,
-                "message": "Instance is starting up",
+                "message": "Starting your dedicated AttackBox instance...",
                 "estimated_seconds": 40,
             }
         elif instance_state == "running":
@@ -627,11 +768,12 @@ def get_stage_info(session: dict) -> dict:
                     "estimated_seconds": 3,
                 }
         else:
+            # Instance state unknown/other - likely warming up from stopped state
             return {
                 "stage": "instance_starting",
                 "progress": 25,
-                "message": "Instance is being prepared",
-                "estimated_seconds": 40,
+                "message": "Warming up your AttackBox from the pool...",
+                "estimated_seconds": 45,
             }
     
     elif status == SessionStatus.READY:
@@ -700,6 +842,7 @@ def format_session_response(session: dict) -> dict:
         "student_name": session.get("student_name"),
         "course_id": session.get("course_id"),
         "lab_id": session.get("lab_id"),
+        "plan": session.get("plan", "pro"),  # Include plan tier
         "status": session.get("status"),
         "instance_id": session.get("instance_id"),
         "instance_ip": session.get("instance_ip"),

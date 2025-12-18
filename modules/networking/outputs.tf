@@ -69,3 +69,8 @@ output "availability_zones" {
   description = "List of availability zones used"
   value       = distinct(aws_subnet.student_labs[*].availability_zone)
 }
+
+output "attackbox_subnet_is_public" {
+  description = "Whether AttackBox subnet is configured as public (direct internet access)"
+  value       = var.attackbox_public_subnet
+}

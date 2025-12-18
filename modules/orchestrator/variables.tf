@@ -40,15 +40,14 @@ variable "enable_vpc_config" {
   default     = false
 }
 
-# AttackBox Integration
-variable "attackbox_asg_name" {
-  description = "Name of the AttackBox Auto Scaling Group"
-  type        = string
-}
-
-variable "attackbox_asg_arn" {
-  description = "ARN of the AttackBox Auto Scaling Group"
-  type        = string
+# AttackBox Integration - Multi-tier pools
+variable "attackbox_pools" {
+  description = "ASG configuration per plan tier (freemium, starter, pro)"
+  type = map(object({
+    asg_name = string
+    asg_arn  = string
+  }))
+  default = {}
 }
 
 variable "attackbox_security_group_id" {

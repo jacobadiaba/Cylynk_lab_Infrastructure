@@ -52,6 +52,7 @@ module "networking" {
   student_labs_cidr         = var.student_labs_cidr
   student_lab_subnet_count  = var.student_lab_subnet_count
   enable_nat_gateway        = var.enable_nat_gateway
+  attackbox_public_subnet   = var.attackbox_public_subnet  # Put AttackBox in public subnet to save NAT cost
   enable_flow_logs          = var.enable_flow_logs
   flow_logs_role_arn        = module.monitoring.flow_logs_role_arn
   flow_logs_destination_arn = module.monitoring.flow_logs_log_group_arn
@@ -132,13 +133,14 @@ module "guacamole" {
 }
 
 
-# AttackBox Module
-module "attackbox" {
+# AttackBox Module - Freemium Tier (t3.small for cost savings)
+module "attackbox_freemium" {
   source = "../../modules/attackbox"
 
   project_name              = var.project_name
   environment               = local.environment
-  instance_type             = var.attackbox_instance_type
+  tier                      = "freemium"
+  instance_type             = var.attackbox_tiers["freemium"].instance_type
   subnet_ids                = [module.networking.attackbox_pool_subnet_id]
   security_group_id         = module.security.attackbox_security_group_id
   iam_instance_profile_name = module.security.ec2_instance_profile_name
@@ -146,22 +148,92 @@ module "attackbox" {
   guacamole_private_ip      = module.guacamole.private_ip
 
   # Pool configuration
-  pool_size     = var.attackbox_pool_size
-  min_pool_size = var.attackbox_min_pool_size
-  max_pool_size = var.attackbox_max_pool_size
+  pool_size     = var.attackbox_tiers["freemium"].pool_size
+  min_pool_size = var.attackbox_tiers["freemium"].min_pool_size
+  max_pool_size = var.attackbox_tiers["freemium"].max_pool_size
 
   # Warm pool configuration for fast instance launches (30-60 seconds)
-  warm_pool_min_size                    = var.warm_pool_min_size
-  warm_pool_max_group_prepared_capacity = var.warm_pool_max_group_prepared_capacity
+  warm_pool_min_size                    = var.attackbox_tiers["freemium"].warm_pool_min
+  warm_pool_max_group_prepared_capacity = var.attackbox_tiers["freemium"].warm_pool_max
 
   # Use custom AMI
   use_custom_ami = true
-  custom_ami_id  = var.attackbox_ami_id  # Set this from Packer output
+  custom_ami_id  = var.attackbox_ami_id
 
-  # Features - Scheduled scaling disabled (users are global, different timezones)
-  enable_auto_scaling      = true  # Enable dynamic scaling based on demand
-  enable_session_tracking  = true
-  enable_notifications     = var.environment == "production"
+  # Features
+  enable_auto_scaling      = true
+  enable_session_tracking  = false  # Use orchestrator for session tracking
+  enable_notifications     = false
+
+  tags = local.common_tags
+}
+
+# AttackBox Module - Starter Tier (t3.medium - balanced)
+module "attackbox_starter" {
+  source = "../../modules/attackbox"
+
+  project_name              = var.project_name
+  environment               = local.environment
+  tier                      = "starter"
+  instance_type             = var.attackbox_tiers["starter"].instance_type
+  subnet_ids                = [module.networking.attackbox_pool_subnet_id]
+  security_group_id         = module.security.attackbox_security_group_id
+  iam_instance_profile_name = module.security.ec2_instance_profile_name
+  key_name                  = module.security.key_pair_name
+  guacamole_private_ip      = module.guacamole.private_ip
+
+  # Pool configuration
+  pool_size     = var.attackbox_tiers["starter"].pool_size
+  min_pool_size = var.attackbox_tiers["starter"].min_pool_size
+  max_pool_size = var.attackbox_tiers["starter"].max_pool_size
+
+  # Warm pool configuration for fast instance launches (30-60 seconds)
+  warm_pool_min_size                    = var.attackbox_tiers["starter"].warm_pool_min
+  warm_pool_max_group_prepared_capacity = var.attackbox_tiers["starter"].warm_pool_max
+
+  # Use custom AMI
+  use_custom_ami = true
+  custom_ami_id  = var.attackbox_ami_id
+
+  # Features
+  enable_auto_scaling      = true
+  enable_session_tracking  = false  # Use orchestrator for session tracking
+  enable_notifications     = false
+
+  tags = local.common_tags
+}
+
+# AttackBox Module - Pro Tier (t3.large - high performance)
+module "attackbox_pro" {
+  source = "../../modules/attackbox"
+
+  project_name              = var.project_name
+  environment               = local.environment
+  tier                      = "pro"
+  instance_type             = var.attackbox_tiers["pro"].instance_type
+  subnet_ids                = [module.networking.attackbox_pool_subnet_id]
+  security_group_id         = module.security.attackbox_security_group_id
+  iam_instance_profile_name = module.security.ec2_instance_profile_name
+  key_name                  = module.security.key_pair_name
+  guacamole_private_ip      = module.guacamole.private_ip
+
+  # Pool configuration
+  pool_size     = var.attackbox_tiers["pro"].pool_size
+  min_pool_size = var.attackbox_tiers["pro"].min_pool_size
+  max_pool_size = var.attackbox_tiers["pro"].max_pool_size
+
+  # Warm pool configuration for fast instance launches (30-60 seconds)
+  warm_pool_min_size                    = var.attackbox_tiers["pro"].warm_pool_min
+  warm_pool_max_group_prepared_capacity = var.attackbox_tiers["pro"].warm_pool_max
+
+  # Use custom AMI
+  use_custom_ami = true
+  custom_ami_id  = var.attackbox_ami_id
+
+  # Features
+  enable_auto_scaling      = true
+  enable_session_tracking  = false  # Use orchestrator for session tracking
+  enable_notifications     = local.environment == "production"
 
   tags = local.common_tags
 }
@@ -181,9 +253,21 @@ module "orchestrator" {
   subnet_ids               = [module.networking.management_subnet_id]
   lambda_security_group_id = module.security.lambda_security_group_id
 
-  # AttackBox Integration
-  attackbox_asg_name          = module.attackbox.autoscaling_group_name
-  attackbox_asg_arn           = module.attackbox.autoscaling_group_arn
+  # AttackBox Integration - Multi-tier pools
+  attackbox_pools = {
+    freemium = {
+      asg_name = module.attackbox_freemium.autoscaling_group_name
+      asg_arn  = module.attackbox_freemium.autoscaling_group_arn
+    }
+    starter = {
+      asg_name = module.attackbox_starter.autoscaling_group_name
+      asg_arn  = module.attackbox_starter.autoscaling_group_arn
+    }
+    pro = {
+      asg_name = module.attackbox_pro.autoscaling_group_name
+      asg_arn  = module.attackbox_pro.autoscaling_group_arn
+    }
+  }
   attackbox_security_group_id = module.security.attackbox_security_group_id
 
   # Guacamole Integration

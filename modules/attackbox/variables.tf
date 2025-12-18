@@ -14,6 +14,16 @@ variable "environment" {
   }
 }
 
+variable "tier" {
+  description = "Plan tier for this AttackBox pool (freemium, starter, pro)"
+  type        = string
+  default     = "pro"
+  validation {
+    condition     = contains(["freemium", "starter", "pro"], var.tier)
+    error_message = "Tier must be freemium, starter, or pro."
+  }
+}
+
 variable "custom_ami_id" {
   description = "Custom AMI ID for AttackBox (leave empty to use latest Kali)"
   type        = string
@@ -31,7 +41,7 @@ variable "instance_type" {
   type        = string
   default     = "t3.medium"
   validation {
-    condition     = can(regex("^t[2-3]\\.(micro|small|medium|large|xlarge)", var.instance_type))
+    condition     = can(regex("^t[2-3]\\.(micro|small|medium|large|xlarge|2xlarge)", var.instance_type))
     error_message = "Instance type must be a valid t2 or t3 instance."
   }
 }

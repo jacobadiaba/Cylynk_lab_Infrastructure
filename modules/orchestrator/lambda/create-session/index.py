@@ -38,7 +38,6 @@ logger.setLevel(logging.INFO)
 # Environment variables
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE")
 INSTANCE_POOL_TABLE = os.environ.get("INSTANCE_POOL_TABLE")
-ASG_NAME = os.environ.get("ASG_NAME")
 GUACAMOLE_PRIVATE_IP = os.environ.get("GUACAMOLE_PRIVATE_IP", "")
 GUACAMOLE_PUBLIC_IP = os.environ.get("GUACAMOLE_PUBLIC_IP", "")
 GUACAMOLE_API_URL = os.environ.get("GUACAMOLE_API_URL", "")
@@ -48,6 +47,11 @@ SESSION_TTL_HOURS = int(os.environ.get("SESSION_TTL_HOURS", "4"))
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "1"))
 USAGE_TABLE = os.environ.get("USAGE_TABLE")
 
+# Multi-tier ASG configuration
+ASG_NAME_FREEMIUM = os.environ.get("ASG_NAME_FREEMIUM", "")
+ASG_NAME_STARTER = os.environ.get("ASG_NAME_STARTER", "")
+ASG_NAME_PRO = os.environ.get("ASG_NAME_PRO", "")
+
 # Moodle authentication
 MOODLE_WEBHOOK_SECRET = os.environ.get("MOODLE_WEBHOOK_SECRET", "")
 REQUIRE_MOODLE_AUTH = os.environ.get("REQUIRE_MOODLE_AUTH", "false").lower() == "true"
@@ -55,6 +59,21 @@ REQUIRE_MOODLE_AUTH = os.environ.get("REQUIRE_MOODLE_AUTH", "false").lower() == 
 # RDP connection defaults (can be overridden via request)
 RDP_USERNAME = os.environ.get("RDP_USERNAME", "kali")
 RDP_PASSWORD = os.environ.get("RDP_PASSWORD", "kali")
+
+
+def get_asg_for_plan(plan: str) -> str:
+    """Get the ASG name for a given plan tier."""
+    asg_map = {
+        "freemium": ASG_NAME_FREEMIUM,
+        "starter": ASG_NAME_STARTER,
+        "pro": ASG_NAME_PRO,
+    }
+    asg_name = asg_map.get(plan)
+    if not asg_name:
+        # Fall back to freemium if plan not recognized or ASG not configured
+        asg_name = ASG_NAME_FREEMIUM or ASG_NAME_STARTER or ASG_NAME_PRO
+        logger.warning(f"Plan '{plan}' ASG not configured, falling back to: {asg_name}")
+    return asg_name
 
 
 def get_guacamole_public_url() -> str:
@@ -321,6 +340,10 @@ def handler(event, context):
         now = get_current_timestamp()
         expires_at = calculate_expiry(SESSION_TTL_HOURS)
         
+        # Get the ASG for this user's plan
+        asg_name = get_asg_for_plan(plan)
+        logger.info(f"Using ASG {asg_name} for plan {plan}")
+        
         # Create session record in pending state
         session_record = {
             "session_id": session_id,
@@ -328,6 +351,7 @@ def handler(event, context):
             "student_name": student_name,
             "course_id": course_id,
             "lab_id": lab_id,
+            "plan": plan,  # Store plan in session for filtering
             "status": SessionStatus.PENDING,
             "created_at": now,
             "updated_at": now,
@@ -338,16 +362,22 @@ def handler(event, context):
         if not sessions_db.put_item(session_record):
             return error_response(500, "Failed to create session record")
         
-        # Try to find an available instance from the pool
+        # Try to find an available instance from the pool for this plan
         # Use pessimistic locking to prevent race conditions
         instance_id = None
         instance_ip = None
         max_allocation_retries = 3
         
-        # Query available instances
-        available_instances = pool_db.query_by_index(
+        # Query available instances and filter by plan
+        all_available = pool_db.query_by_index(
             "StatusIndex", "status", InstanceStatus.AVAILABLE
         )
+        # Filter by plan - only use instances from the same tier
+        available_instances = [
+            inst for inst in all_available
+            if inst.get("plan", "pro") == plan  # Default to "pro" for backward compat
+        ]
+        logger.info(f"Found {len(available_instances)} available instances for plan {plan}")
         
         # Try to allocate an instance with retry logic for race conditions
         for retry_attempt in range(max_allocation_retries):
@@ -416,17 +446,21 @@ def handler(event, context):
             if retry_attempt < max_allocation_retries - 1:
                 import time
                 time.sleep(0.3 * (retry_attempt + 1))  # Exponential backoff
-                available_instances = pool_db.query_by_index(
+                all_available = pool_db.query_by_index(
                     "StatusIndex", "status", InstanceStatus.AVAILABLE
                 )
+                available_instances = [
+                    inst for inst in all_available
+                    if inst.get("plan", "pro") == plan
+                ]
         
         # If no available instance, check ASG for stopped instances or scale up
         if not instance_id:
-            logger.info(f"No immediately available instances for session {session_id}, checking ASG for warm pool or scaling")
-            asg_instances = asg_client.get_asg_instances(ASG_NAME)
-            logger.info(f"Found {len(asg_instances)} instances in ASG")
+            logger.info(f"No immediately available instances for session {session_id}, checking ASG {asg_name} for warm pool or scaling")
+            asg_instances = asg_client.get_asg_instances(asg_name)
+            logger.info(f"Found {len(asg_instances)} instances in ASG {asg_name}")
             
-            # Look for stopped instances we can start (warm pool)
+            # Look for stopped instances we can start (warm pool) or running instances we can use
             for asg_instance in asg_instances:
                 inst_id = asg_instance.get("InstanceId")
                 lifecycle_state = asg_instance.get("LifecycleState")
@@ -436,22 +470,27 @@ def handler(event, context):
                     if instance_info:
                         state = instance_info.get("State", {}).get("Name")
                         
-                        # Check if this instance is not already assigned
+                        # Check pool record for this instance
                         pool_record = pool_db.get_item({"instance_id": inst_id})
+                        pool_status = pool_record.get("status") if pool_record else None
+                        pool_session = pool_record.get("session_id") if pool_record else None
                         
-                        if state == "stopped" and (not pool_record or pool_record.get("status") != InstanceStatus.ASSIGNED):
+                        logger.info(f"Instance {inst_id}: state={state}, pool_status={pool_status}, pool_session={pool_session}")
+                        
+                        if state == "stopped" and pool_status != InstanceStatus.ASSIGNED:
                             # Start this instance (warm pool)
                             logger.info(f"Starting warm pool instance {inst_id} for session {session_id}")
                             if ec2_client.start_instance(inst_id):
                                 instance_id = inst_id
                                 
-                                # Update/create pool record
+                                # Update/create pool record with plan
                                 pool_db.put_item({
                                     "instance_id": inst_id,
                                     "status": InstanceStatus.STARTING,
                                     "session_id": session_id,
                                     "student_id": student_id,
                                     "assigned_at": now,
+                                    "plan": plan,  # Track which tier this instance belongs to
                                 })
                                 
                                 # Update session to provisioning with note
@@ -467,27 +506,50 @@ def handler(event, context):
                                 logger.info(f"Session {session_id} assigned to starting warm pool instance {inst_id}")
                                 break
                         
-                        elif state == "running" and (not pool_record or pool_record.get("status") == InstanceStatus.AVAILABLE):
-                            # Use this running instance
-                            instance_id = inst_id
-                            instance_ip = instance_info.get("PrivateIpAddress")
+                        elif state == "running":
+                            # Check if instance is truly available
+                            # It's usable if: no pool record, status is AVAILABLE, or status is STARTING/ASSIGNED but session is invalid
+                            can_use = False
                             
-                            pool_db.put_item({
-                                "instance_id": inst_id,
-                                "status": InstanceStatus.ASSIGNED,
-                                "session_id": session_id,
-                                "student_id": student_id,
-                                "assigned_at": now,
-                            })
-                            break
+                            if not pool_record:
+                                can_use = True
+                                logger.info(f"Instance {inst_id} has no pool record, claiming it")
+                            elif pool_status == InstanceStatus.AVAILABLE:
+                                can_use = True
+                                logger.info(f"Instance {inst_id} is AVAILABLE, claiming it")
+                            elif pool_status in [InstanceStatus.STARTING, InstanceStatus.ASSIGNED] and pool_session:
+                                # Check if the assigned session is still valid
+                                existing_session = sessions_db.get_item({"session_id": pool_session})
+                                if not existing_session or existing_session.get("status") in [SessionStatus.TERMINATED, SessionStatus.ERROR]:
+                                    can_use = True
+                                    logger.info(f"Instance {inst_id} was assigned to invalid session {pool_session}, reclaiming it")
+                                else:
+                                    logger.info(f"Instance {inst_id} is assigned to active session {pool_session}, skipping")
+                            else:
+                                logger.info(f"Instance {inst_id} has status {pool_status}, skipping")
+                            
+                            if can_use:
+                                instance_id = inst_id
+                                instance_ip = instance_info.get("PrivateIpAddress")
+                                
+                                pool_db.put_item({
+                                    "instance_id": inst_id,
+                                    "status": InstanceStatus.ASSIGNED,
+                                    "session_id": session_id,
+                                    "student_id": student_id,
+                                    "assigned_at": now,
+                                    "plan": plan,  # Track which tier this instance belongs to
+                                })
+                                logger.info(f"Session {session_id} assigned to running instance {inst_id}")
+                                break
         
         # If still no instance, request ASG scale up
         if not instance_id:
-            capacity = asg_client.get_asg_capacity(ASG_NAME)
+            capacity = asg_client.get_asg_capacity(asg_name)
             if capacity["desired"] < capacity["max"]:
                 new_capacity = capacity["desired"] + 1
-                if asg_client.set_desired_capacity(ASG_NAME, new_capacity):
-                    logger.info(f"Scaled up ASG to {new_capacity}")
+                if asg_client.set_desired_capacity(asg_name, new_capacity):
+                    logger.info(f"Scaled up ASG {asg_name} to {new_capacity}")
                     
                     # Update session status
                     sessions_db.update_item(
