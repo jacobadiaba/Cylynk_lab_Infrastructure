@@ -35,50 +35,87 @@ SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE")
 INSTANCE_POOL_TABLE = os.environ.get("INSTANCE_POOL_TABLE")
 USAGE_TABLE = os.environ.get("USAGE_TABLE")
 GUACAMOLE_PRIVATE_IP = os.environ.get("GUACAMOLE_PRIVATE_IP", "")
+GUACAMOLE_PUBLIC_IP = os.environ.get("GUACAMOLE_PUBLIC_IP", "")
 GUACAMOLE_API_URL = os.environ.get("GUACAMOLE_API_URL", "")
 GUACAMOLE_ADMIN_USER = os.environ.get("GUACAMOLE_ADMIN_USER", "guacadmin")
 GUACAMOLE_ADMIN_PASS = os.environ.get("GUACAMOLE_ADMIN_PASS", "guacadmin")
+ENABLE_GUACAMOLE_CLEANUP = os.environ.get("ENABLE_GUACAMOLE_CLEANUP", "true").lower() == "true"
 
 
 def cleanup_guacamole_resources(connection_id: str, session_username: str = None) -> dict:
     """
     Delete the Guacamole connection and session user for this session.
     
+    This is a best-effort operation - failures here should NOT block session termination.
+    Uses a short timeout (3 seconds) to prevent blocking the termination process.
+    
     Returns:
         dict with cleanup results
     """
-    guac_url = GUACAMOLE_API_URL or (f"https://{GUACAMOLE_PRIVATE_IP}/guacamole" if GUACAMOLE_PRIVATE_IP else "")
+    # Prefer API URL, then public IP (for Lambdas outside VPC), then private IP
+    guac_url = GUACAMOLE_API_URL or (
+        f"https://{GUACAMOLE_PUBLIC_IP}/guacamole" if GUACAMOLE_PUBLIC_IP else (
+            f"https://{GUACAMOLE_PRIVATE_IP}/guacamole" if GUACAMOLE_PRIVATE_IP else ""
+        )
+    )
     
     result = {
         "connection_deleted": False,
         "user_deleted": False,
+        "sessions_killed": 0,
+        "error": None,
     }
     
     if not guac_url:
+        logger.warning("No Guacamole URL configured, skipping cleanup")
         return result
     
     try:
+        # Use shorter timeout for Guacamole operations during termination
         guac = GuacamoleClient(
             base_url=guac_url,
             username=GUACAMOLE_ADMIN_USER,
             password=GUACAMOLE_ADMIN_PASS,
+            timeout=3,  # 3-second timeout for quick termination
         )
         
-        # Delete the connection
+        # Kill active sessions first (force disconnects users)
         if connection_id:
-            result["connection_deleted"] = guac.delete_connection(connection_id)
-            if result["connection_deleted"]:
-                logger.info(f"Deleted Guacamole connection: {connection_id}")
+            try:
+                result["sessions_killed"] = guac.kill_active_sessions(connection_id)
+                if result["sessions_killed"] > 0:
+                    logger.info(f"Killed {result['sessions_killed']} active session(s) for connection {connection_id}")
+            except Exception as e:
+                logger.warning(f"Error killing active sessions for {connection_id}: {e}")
+        
+        # Delete the connection definition
+        if connection_id:
+            try:
+                result["connection_deleted"] = guac.delete_connection(connection_id)
+                if result["connection_deleted"]:
+                    logger.info(f"Deleted Guacamole connection: {connection_id}")
+                else:
+                    logger.warning(f"Failed to delete Guacamole connection: {connection_id}")
+            except Exception as e:
+                logger.warning(f"Error deleting Guacamole connection {connection_id}: {e}")
+                result["error"] = str(e)
         
         # Delete the session user
         if session_username:
-            result["user_deleted"] = guac.delete_user(session_username)
-            if result["user_deleted"]:
-                logger.info(f"Deleted Guacamole session user: {session_username}")
+            try:
+                result["user_deleted"] = guac.delete_user(session_username)
+                if result["user_deleted"]:
+                    logger.info(f"Deleted Guacamole session user: {session_username}")
+                else:
+                    logger.warning(f"Failed to delete Guacamole user: {session_username}")
+            except Exception as e:
+                logger.warning(f"Error deleting Guacamole user {session_username}: {e}")
         
         return result
     except Exception as e:
-        logger.error(f"Error cleaning up Guacamole resources: {e}")
+        # Log but don't fail - Guacamole cleanup is best-effort
+        logger.warning(f"Guacamole cleanup failed (non-blocking): {e}")
+        result["error"] = str(e)
         return result
 
 
@@ -147,16 +184,27 @@ def handler(event, context):
         )
         
         # Delete Guacamole connection and session user if they exist
+        # This is best-effort - failures here should NOT block termination
         guac_connection_id = connection_info.get("guacamole_connection_id")
         guac_session_user = connection_info.get("guacamole_session_user")
-        guac_cleanup = {"connection_deleted": False, "user_deleted": False}
+        guac_cleanup = {"connection_deleted": False, "user_deleted": False, "error": None, "skipped": False}
         
-        if guac_connection_id or guac_session_user:
-            guac_cleanup = cleanup_guacamole_resources(guac_connection_id, guac_session_user)
-            if guac_cleanup.get("connection_deleted"):
-                logger.info(f"Deleted Guacamole connection {guac_connection_id}")
-            if guac_cleanup.get("user_deleted"):
-                logger.info(f"Deleted Guacamole session user {guac_session_user}")
+        if not ENABLE_GUACAMOLE_CLEANUP:
+            logger.info("Guacamole cleanup disabled via ENABLE_GUACAMOLE_CLEANUP=false")
+            guac_cleanup["skipped"] = True
+        elif guac_connection_id or guac_session_user:
+            try:
+                logger.info(f"Attempting Guacamole cleanup for connection {guac_connection_id}")
+                guac_cleanup = cleanup_guacamole_resources(guac_connection_id, guac_session_user)
+                
+                if guac_cleanup.get("error"):
+                    logger.warning(f"Guacamole cleanup completed with errors: {guac_cleanup['error']}")
+                elif guac_cleanup.get("connection_deleted") or guac_cleanup.get("user_deleted"):
+                    logger.info(f"Guacamole cleanup successful")
+            except Exception as e:
+                # Never let Guacamole cleanup block session termination
+                logger.warning(f"Guacamole cleanup exception (continuing anyway): {e}")
+                guac_cleanup["error"] = str(e)
         
         # Handle instance
         instance_stopped = False
@@ -220,6 +268,7 @@ def handler(event, context):
                 "status": SessionStatus.TERMINATED,
                 "instance_id": instance_id,
                 "instance_stopped": instance_stopped,
+                "guacamole_sessions_killed": guac_cleanup.get("sessions_killed", 0),
                 "guacamole_connection_deleted": guac_cleanup.get("connection_deleted", False),
                 "guacamole_user_deleted": guac_cleanup.get("user_deleted", False),
                 "reason": reason,

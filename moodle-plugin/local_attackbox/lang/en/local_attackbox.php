@@ -105,6 +105,15 @@ $string['terminate:confirm'] = 'Are you sure you want to end your LynkBox sessio
 $string['terminate:success'] = 'Session terminated successfully';
 $string['terminate:error'] = 'Failed to terminate session';
 
+// Idle detection messages.
+$string['idle:warning_title'] = 'Session Idle Warning';
+$string['idle:warning_message'] = 'Your session has been idle. It will be automatically terminated to save resources.';
+$string['idle:critical_message'] = '<strong>Critical:</strong> Your session will be terminated very soon due to inactivity!';
+$string['idle:keep_active'] = "I'm still here!";
+$string['idle:focus_mode'] = 'Enable Focus Mode';
+$string['idle:focus_mode_desc'] = 'Focus mode disables idle termination for this session (useful for long-running tasks).';
+$string['idle:terminated'] = 'Your session was terminated due to inactivity. You can launch a new session when needed.';
+
 // Progress messages - these match the user's requested messages.
 $string['progress:5'] = 'Initializing virtual SOC environment...';
 $string['progress:10'] = 'Provisioning secure network tunnel...';

@@ -655,7 +655,7 @@ class GuacamoleClient:
     Creates RDP connections and generates client URLs.
     """
     
-    def __init__(self, base_url: str, username: str = "guacadmin", password: str = "guacadmin"):
+    def __init__(self, base_url: str, username: str = "guacadmin", password: str = "guacadmin", timeout: int = 10):
         """
         Initialize Guacamole client.
         
@@ -663,12 +663,14 @@ class GuacamoleClient:
             base_url: Guacamole base URL (e.g., https://guac.example.com/guacamole)
             username: Admin username
             password: Admin password
+            timeout: Request timeout in seconds (default: 10, use lower for non-critical operations)
         """
         self.base_url = base_url.rstrip("/")
         self.username = username
         self.password = password
         self.token = None
         self.data_source = "postgresql"  # Default data source
+        self.timeout = timeout  # Configurable timeout
         
         # Import here to avoid issues if not needed
         try:
@@ -712,7 +714,7 @@ class GuacamoleClient:
                 method=method
             )
             
-            with self.urllib_request.urlopen(request, context=self.ssl_context, timeout=10) as response:
+            with self.urllib_request.urlopen(request, context=self.ssl_context, timeout=self.timeout) as response:
                 response_body = response.read().decode("utf-8")
                 if response_body:
                     return json.loads(response_body)
@@ -737,7 +739,7 @@ class GuacamoleClient:
                 method="POST"
             )
             
-            with self.urllib_request.urlopen(request, context=self.ssl_context, timeout=10) as response:
+            with self.urllib_request.urlopen(request, context=self.ssl_context, timeout=self.timeout) as response:
                 result = json.loads(response.read().decode("utf-8"))
                 self.token = result.get("authToken")
                 self.data_source = result.get("dataSource", "postgresql")
@@ -845,6 +847,57 @@ class GuacamoleClient:
             return True
         return False
     
+    def kill_active_sessions(self, connection_id: str) -> int:
+        """
+        Kill all active sessions for a specific connection.
+        
+        This forcibly terminates active browser/RDP sessions, closing them
+        for users who are currently connected.
+        
+        Args:
+            connection_id: The connection identifier
+            
+        Returns:
+            Number of sessions killed
+        """
+        if not self.token:
+            if not self.authenticate():
+                return 0
+        
+        try:
+            # Get all active connections
+            result = self._make_request(
+                "GET",
+                f"/session/data/{self.data_source}/activeConnections"
+            )
+            
+            if result is None:
+                return 0
+            
+            killed = 0
+            
+            # Find and kill sessions for this connection
+            for conn_key, conn_data in result.items():
+                conn_identifier = conn_data.get("connectionIdentifier", "")
+                
+                if str(conn_identifier) == str(connection_id):
+                    # Kill this active session
+                    # The conn_key is the active connection UUID
+                    delete_result = self._make_request(
+                        "DELETE",
+                        f"/session/data/{self.data_source}/activeConnections/{conn_key}"
+                    )
+                    
+                    if delete_result is not None:
+                        logger.info(f"Killed active Guacamole session: {conn_key} for connection {connection_id}")
+                        killed += 1
+            
+            return killed
+            
+        except Exception as e:
+            logger.error(f"Error killing active sessions: {e}")
+            return 0
+    
     def get_connection_url(self, connection_id: str, connection_type: str = "c") -> str:
         """
         Generate a URL to directly access a connection.
@@ -879,6 +932,115 @@ class GuacamoleClient:
         if self.token:
             return f"{conn_url}?token={self.token}"
         return conn_url
+    
+    def get_connection_activity(self, connection_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get activity information for a specific connection.
+        
+        Checks if there are active sessions using this connection
+        and when the last activity occurred.
+        
+        Args:
+            connection_id: The connection identifier
+            
+        Returns:
+            Dict with activity info:
+            - active: bool - whether there are active connections
+            - active_connections: int - number of active connections
+            - last_activity: int - Unix timestamp of last activity (0 if unknown)
+        """
+        if not self.token:
+            if not self.authenticate():
+                return None
+        
+        try:
+            # Get active connections from Guacamole
+            result = self._make_request(
+                "GET",
+                f"/session/data/{self.data_source}/activeConnections"
+            )
+            
+            if result is None:
+                return None
+            
+            active_count = 0
+            last_activity = 0
+            
+            # Check if our connection ID is in the active connections
+            for conn_key, conn_data in result.items():
+                # Connection key format varies, but usually contains the connection ID
+                conn_identifier = conn_data.get("connectionIdentifier", "")
+                
+                if str(conn_identifier) == str(connection_id):
+                    active_count += 1
+                    
+                    # Get start time (as proxy for activity)
+                    start_date = conn_data.get("startDate")
+                    if start_date:
+                        # Convert milliseconds to seconds
+                        try:
+                            activity_ts = int(start_date) // 1000
+                            if activity_ts > last_activity:
+                                last_activity = activity_ts
+                        except (ValueError, TypeError):
+                            pass
+            
+            return {
+                "active": active_count > 0,
+                "active_connections": active_count,
+                "last_activity": last_activity,
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting connection activity: {e}")
+            return None
+    
+    def get_all_active_connections(self) -> Dict[str, Any]:
+        """
+        Get all active connections across the Guacamole server.
+        
+        Useful for checking overall activity and detecting orphaned sessions.
+        
+        Returns:
+            Dict mapping connection identifiers to their active session info
+        """
+        if not self.token:
+            if not self.authenticate():
+                return {}
+        
+        try:
+            result = self._make_request(
+                "GET",
+                f"/session/data/{self.data_source}/activeConnections"
+            )
+            
+            if result is None:
+                return {}
+            
+            # Group by connection identifier
+            connections = {}
+            for conn_key, conn_data in result.items():
+                conn_id = conn_data.get("connectionIdentifier", "unknown")
+                
+                if conn_id not in connections:
+                    connections[conn_id] = {
+                        "active_sessions": [],
+                        "total_connections": 0,
+                    }
+                
+                connections[conn_id]["active_sessions"].append({
+                    "key": conn_key,
+                    "username": conn_data.get("username"),
+                    "start_date": conn_data.get("startDate"),
+                    "remote_host": conn_data.get("remoteHost"),
+                })
+                connections[conn_id]["total_connections"] += 1
+            
+            return connections
+            
+        except Exception as e:
+            logger.error(f"Error getting all active connections: {e}")
+            return {}
     
     def create_user(self, username: str, password: str) -> bool:
         """
@@ -995,7 +1157,7 @@ class GuacamoleClient:
                 method="POST"
             )
             
-            with self.urllib_request.urlopen(request, context=self.ssl_context, timeout=10) as response:
+            with self.urllib_request.urlopen(request, context=self.ssl_context, timeout=self.timeout) as response:
                 result = json.loads(response.read().decode("utf-8"))
                 return result.get("authToken")
         except Exception as e:
