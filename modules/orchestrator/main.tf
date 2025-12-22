@@ -428,16 +428,18 @@ resource "aws_lambda_function" "terminate_session" {
 
   environment {
     variables = {
-      SESSIONS_TABLE       = aws_dynamodb_table.sessions.name
-      INSTANCE_POOL_TABLE  = aws_dynamodb_table.instance_pool.name
-      USAGE_TABLE          = aws_dynamodb_table.usage.name
-      GUACAMOLE_PRIVATE_IP = var.guacamole_private_ip
-      GUACAMOLE_API_URL    = var.guacamole_api_url
-      GUACAMOLE_ADMIN_USER = var.guacamole_admin_username
-      GUACAMOLE_ADMIN_PASS = var.guacamole_admin_password
-      ENVIRONMENT          = var.environment
-      PROJECT_NAME         = var.project_name
-      AWS_REGION_NAME      = var.aws_region
+      SESSIONS_TABLE            = aws_dynamodb_table.sessions.name
+      INSTANCE_POOL_TABLE       = aws_dynamodb_table.instance_pool.name
+      USAGE_TABLE               = aws_dynamodb_table.usage.name
+      GUACAMOLE_PRIVATE_IP      = var.guacamole_private_ip
+      GUACAMOLE_PUBLIC_IP       = var.guacamole_public_ip
+      GUACAMOLE_API_URL         = var.guacamole_api_url
+      GUACAMOLE_ADMIN_USER      = var.guacamole_admin_username
+      GUACAMOLE_ADMIN_PASS      = var.guacamole_admin_password
+      ENABLE_GUACAMOLE_CLEANUP  = "true"  # Re-enabled with public IP fix
+      ENVIRONMENT               = var.environment
+      PROJECT_NAME              = var.project_name
+      AWS_REGION_NAME           = var.aws_region
     }
   }
 
@@ -546,9 +548,24 @@ resource "aws_lambda_function" "pool_manager" {
       ASG_NAME_STARTER    = try(var.attackbox_pools["starter"].asg_name, "")
       ASG_NAME_PRO        = try(var.attackbox_pools["pro"].asg_name, "")
       ATTACKBOX_POOLS     = jsonencode(var.attackbox_pools)
-      ENVIRONMENT         = var.environment
-      PROJECT_NAME        = var.project_name
-      AWS_REGION_NAME     = var.aws_region
+      # Idle detection configuration
+      ENABLE_IDLE_DETECTION       = tostring(var.enable_idle_detection)
+      IDLE_HEARTBEAT_GRACE_PERIOD = tostring(var.idle_heartbeat_grace_period)
+      IDLE_WARNING_FREEMIUM       = tostring(var.idle_warning_seconds_freemium)
+      IDLE_TERMINATION_FREEMIUM   = tostring(var.idle_termination_seconds_freemium)
+      IDLE_WARNING_STARTER        = tostring(var.idle_warning_seconds_starter)
+      IDLE_TERMINATION_STARTER    = tostring(var.idle_termination_seconds_starter)
+      IDLE_WARNING_PRO            = tostring(var.idle_warning_seconds_pro)
+      IDLE_TERMINATION_PRO        = tostring(var.idle_termination_seconds_pro)
+      # Guacamole for activity checking
+      GUACAMOLE_PRIVATE_IP = var.guacamole_private_ip
+      GUACAMOLE_PUBLIC_IP  = var.guacamole_public_ip
+      GUACAMOLE_API_URL    = var.guacamole_api_url
+      GUACAMOLE_ADMIN_USER = var.guacamole_admin_username
+      GUACAMOLE_ADMIN_PASS = var.guacamole_admin_password
+      ENVIRONMENT          = var.environment
+      PROJECT_NAME         = var.project_name
+      AWS_REGION_NAME      = var.aws_region
     }
   }
 
@@ -671,6 +688,73 @@ resource "aws_lambda_function" "usage_history" {
 # =============================================================================
 # Admin Sessions Lambda
 # =============================================================================
+
+# =============================================================================
+# Session Heartbeat Lambda (Idle Detection)
+# =============================================================================
+
+resource "aws_cloudwatch_log_group" "session_heartbeat" {
+  name              = "/aws/lambda/${local.function_name_prefix}-session-heartbeat"
+  retention_in_days = var.log_retention_days
+  tags              = local.common_tags
+}
+
+resource "aws_lambda_function" "session_heartbeat" {
+  filename         = "${path.module}/lambda/packages/session-heartbeat.zip"
+  function_name    = "${local.function_name_prefix}-session-heartbeat"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "index.handler"
+  runtime          = "python3.11"
+  timeout          = 15
+  memory_size      = 128
+
+  source_code_hash = fileexists("${path.module}/lambda/packages/session-heartbeat.zip") ? filebase64sha256("${path.module}/lambda/packages/session-heartbeat.zip") : null
+
+  layers = [aws_lambda_layer_version.common.arn]
+
+  environment {
+    variables = {
+      SESSIONS_TABLE            = aws_dynamodb_table.sessions.name
+      GUACAMOLE_PRIVATE_IP      = var.guacamole_private_ip
+      GUACAMOLE_PUBLIC_IP       = var.guacamole_public_ip
+      GUACAMOLE_API_URL         = var.guacamole_api_url
+      GUACAMOLE_ADMIN_USER      = var.guacamole_admin_username
+      GUACAMOLE_ADMIN_PASS      = var.guacamole_admin_password
+      MOODLE_WEBHOOK_SECRET     = var.moodle_webhook_secret
+      REQUIRE_MOODLE_AUTH       = tostring(var.require_moodle_auth)
+      IDLE_WARNING_FREEMIUM     = tostring(var.idle_warning_seconds_freemium)
+      IDLE_TERMINATION_FREEMIUM = tostring(var.idle_termination_seconds_freemium)
+      IDLE_WARNING_STARTER      = tostring(var.idle_warning_seconds_starter)
+      IDLE_TERMINATION_STARTER  = tostring(var.idle_termination_seconds_starter)
+      IDLE_WARNING_PRO          = tostring(var.idle_warning_seconds_pro)
+      IDLE_TERMINATION_PRO      = tostring(var.idle_termination_seconds_pro)
+      ENVIRONMENT               = var.environment
+      PROJECT_NAME              = var.project_name
+      AWS_REGION_NAME           = var.aws_region
+    }
+  }
+
+  dynamic "vpc_config" {
+    for_each = var.enable_vpc_config ? [1] : []
+    content {
+      subnet_ids         = var.subnet_ids
+      security_group_ids = [var.lambda_security_group_id]
+    }
+  }
+
+  tracing_config {
+    mode = var.enable_xray_tracing ? "Active" : "PassThrough"
+  }
+
+  depends_on = [aws_cloudwatch_log_group.session_heartbeat]
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${local.function_name_prefix}-session-heartbeat"
+    }
+  )
+}
 
 resource "aws_cloudwatch_log_group" "admin_sessions" {
   name              = "/aws/lambda/${local.function_name_prefix}-admin-sessions"
@@ -956,6 +1040,32 @@ resource "aws_lambda_permission" "admin_sessions_apigw" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.admin_sessions.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.orchestrator.execution_arn}/*/*"
+}
+
+# =============================================================================
+# Session Heartbeat API Routes (Idle Detection)
+# =============================================================================
+
+resource "aws_apigatewayv2_integration" "session_heartbeat" {
+  api_id                 = aws_apigatewayv2_api.orchestrator.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.session_heartbeat.invoke_arn
+  integration_method     = "POST"
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "session_heartbeat" {
+  api_id    = aws_apigatewayv2_api.orchestrator.id
+  route_key = "POST /sessions/{sessionId}/heartbeat"
+  target    = "integrations/${aws_apigatewayv2_integration.session_heartbeat.id}"
+}
+
+resource "aws_lambda_permission" "session_heartbeat_apigw" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.session_heartbeat.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.orchestrator.execution_arn}/*/*"
 }

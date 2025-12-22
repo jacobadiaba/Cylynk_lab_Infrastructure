@@ -100,3 +100,33 @@ output "get_usage_endpoint" {
   description = "Endpoint to get usage statistics"
   value       = "${aws_apigatewayv2_api.orchestrator.api_endpoint}/${var.api_stage_name}/usage"
 }
+
+output "session_heartbeat_endpoint" {
+  description = "Endpoint to send session heartbeat (append /{sessionId}/heartbeat)"
+  value       = "${aws_apigatewayv2_api.orchestrator.api_endpoint}/${var.api_stage_name}/sessions"
+}
+
+output "session_heartbeat_function_name" {
+  description = "Session heartbeat Lambda function name"
+  value       = aws_lambda_function.session_heartbeat.function_name
+}
+
+# Idle detection configuration outputs
+output "idle_detection_config" {
+  description = "Idle detection thresholds by tier"
+  value = {
+    enabled = var.enable_idle_detection
+    freemium = {
+      warning_seconds     = var.idle_warning_seconds_freemium
+      termination_seconds = var.idle_termination_seconds_freemium
+    }
+    starter = {
+      warning_seconds     = var.idle_warning_seconds_starter
+      termination_seconds = var.idle_termination_seconds_starter
+    }
+    pro = {
+      warning_seconds     = var.idle_warning_seconds_pro
+      termination_seconds = var.idle_termination_seconds_pro
+    }
+  }
+}

@@ -55,6 +55,11 @@ define(["jquery", "core/str"], function ($, Str) {
     { key: "terminate:confirm", component: "local_attackbox" },
     { key: "terminate:success", component: "local_attackbox" },
     { key: "terminate:error", component: "local_attackbox" },
+    { key: "idle:warning_title", component: "local_attackbox" },
+    { key: "idle:warning_message", component: "local_attackbox" },
+    { key: "idle:critical_message", component: "local_attackbox" },
+    { key: "idle:keep_active", component: "local_attackbox" },
+    { key: "idle:focus_mode", component: "local_attackbox" },
     { key: "progress:5", component: "local_attackbox" },
     { key: "progress:10", component: "local_attackbox" },
     { key: "progress:18", component: "local_attackbox" },
@@ -68,6 +73,12 @@ define(["jquery", "core/str"], function ($, Str) {
     { key: "progress:94", component: "local_attackbox" },
     { key: "progress:100", component: "local_attackbox" },
   ];
+
+  /**
+   * Heartbeat configuration
+   */
+  const HEARTBEAT_INTERVAL = 30000; // Send heartbeat every 30 seconds
+  const IDLE_CHECK_INTERVAL = 10000; // Check idle state every 10 seconds
 
   /**
    * Launcher class
@@ -94,6 +105,15 @@ define(["jquery", "core/str"], function ($, Str) {
       this.currentEduIndex = 0; // Current educational tip index
       this.currentAttackIndex = 0; // Current attack type index
 
+      // Idle detection state
+      this.heartbeatInterval = null; // Heartbeat sending interval
+      this.idleCheckInterval = null; // Idle state check interval
+      this.lastUserActivity = Date.now(); // Last user interaction timestamp
+      this.isTabVisible = !document.hidden; // Track tab visibility
+      this.focusMode = false; // User opted out of idle termination
+      this.idleWarningShown = false; // Track if warning is currently shown
+      this.idleThresholds = null; // Idle thresholds from API
+
       // Educational content data
       this.eduContent = [
         "The average cost of a data breach in 2024 is $4.45 million. Proper security testing can prevent most breaches.",
@@ -115,14 +135,14 @@ define(["jquery", "core/str"], function ($, Str) {
       ];
 
       this.attackTypes = [
-        { name: "SQL Injection", icon: "💉", color: "#ff5722" },
-        { name: "XSS Attack", icon: "⚡", color: "#ff9800" },
-        { name: "Phishing", icon: "🎣", color: "#f44336" },
-        { name: "Port Scan", icon: "🔍", color: "#00bcd4" },
-        { name: "Brute Force", icon: "🔨", color: "#9c27b0" },
-        { name: "Man-in-Middle", icon: "👁️", color: "#673ab7" },
-        { name: "DoS Attack", icon: "💥", color: "#e91e63" },
-        { name: "Buffer Overflow", icon: "📦", color: "#ff5722" },
+        { name: "SQL Injection", icon: "&#128137;", color: "#ff5722" },
+        { name: "XSS Attack", icon: "&#9889;", color: "#ff9800" },
+        { name: "Phishing", icon: "&#127907;", color: "#f44336" },
+        { name: "Port Scan", icon: "&#128269;", color: "#00bcd4" },
+        { name: "Brute Force", icon: "&#128296;", color: "#9c27b0" },
+        { name: "Man-in-Middle", icon: "&#128065;", color: "#673ab7" },
+        { name: "DoS Attack", icon: "&#128165;", color: "#e91e63" },
+        { name: "Buffer Overflow", icon: "&#128230;", color: "#ff5722" },
       ];
 
       this.init();
@@ -135,8 +155,10 @@ define(["jquery", "core/str"], function ($, Str) {
       this.createButton();
       this.createOverlay();
       this.createNotificationBanner();
+      this.createIdleWarningModal();
       this.createUsageDashboardLink();
       this.bindEvents();
+      this.bindIdleDetectionEvents();
       this.updateUsageDisplay();
 
       // Check for existing session after a short delay to ensure all is initialized
@@ -148,6 +170,416 @@ define(["jquery", "core/str"], function ($, Str) {
 
       // Update usage display every 30 seconds
       setInterval(() => this.updateUsageDisplay(), 30000);
+    }
+
+    /**
+     * Create idle warning modal
+     */
+    createIdleWarningModal() {
+      const html = `
+        <div id="attackbox-idle-warning" class="attackbox-idle-warning" style="display: none;">
+          <div class="attackbox-idle-warning-content">
+            <div class="attackbox-idle-warning-icon">&#9888;</div>
+            <h3 class="attackbox-idle-warning-title">${
+              this.strings.idleWarningTitle || "Session Idle Warning"
+            }</h3>
+            <p id="attackbox-idle-warning-message" class="attackbox-idle-warning-message">
+              ${
+                this.strings.idleWarningMessage ||
+                "Your session has been idle and will be terminated soon."
+              }
+            </p>
+            <div class="attackbox-idle-countdown">
+              <span class="attackbox-idle-countdown-label">Time until termination:</span>
+              <span id="attackbox-idle-countdown-time" class="attackbox-idle-countdown-time">--:--</span>
+            </div>
+            <div class="attackbox-idle-warning-actions">
+              <button id="attackbox-idle-keep-active" class="attackbox-btn-keep-active" type="button">
+                ${this.strings.idleKeepActive || "I'm still here!"}
+              </button>
+              <button id="attackbox-idle-focus-mode" class="attackbox-btn-focus-mode" type="button">
+                ${this.strings.idleFocusMode || "Enable Focus Mode"}
+              </button>
+            </div>
+            <p class="attackbox-idle-focus-note">
+              Focus mode disables idle termination for this session (useful for long-running tasks).
+            </p>
+          </div>
+        </div>
+      `;
+      $("body").append(html);
+      this.$idleWarning = $("#attackbox-idle-warning");
+      this.$idleCountdown = $("#attackbox-idle-countdown-time");
+      this.$idleMessage = $("#attackbox-idle-warning-message");
+    }
+
+    /**
+     * Bind idle detection events (tab visibility, user activity)
+     */
+    bindIdleDetectionEvents() {
+      const self = this;
+
+      // Track tab visibility
+      document.addEventListener("visibilitychange", function () {
+        self.isTabVisible = !document.hidden;
+        if (self.isTabVisible) {
+          // Tab became visible, user is likely active
+          self.recordUserActivity();
+        }
+      });
+
+      // Track user activity on the page
+      const activityEvents = ["mousedown", "keydown", "scroll", "touchstart"];
+      activityEvents.forEach((eventType) => {
+        document.addEventListener(
+          eventType,
+          function () {
+            self.recordUserActivity();
+          },
+          { passive: true }
+        );
+      });
+
+      // Idle warning button handlers
+      $("#attackbox-idle-keep-active").on("click", function (e) {
+        e.preventDefault();
+        self.keepSessionActive();
+      });
+
+      $("#attackbox-idle-focus-mode").on("click", function (e) {
+        e.preventDefault();
+        self.enableFocusMode();
+      });
+    }
+
+    /**
+     * Record user activity timestamp
+     */
+    recordUserActivity() {
+      this.lastUserActivity = Date.now();
+
+      // If warning is shown and user interacts, hide it
+      if (this.idleWarningShown && this.$idleWarning.is(":visible")) {
+        this.hideIdleWarning();
+      }
+    }
+
+    /**
+     * Start heartbeat sending for active session
+     */
+    startHeartbeat() {
+      if (this.heartbeatInterval) {
+        return; // Already running
+      }
+
+      console.log("Starting session heartbeat");
+
+      // Send initial heartbeat
+      this.sendHeartbeat();
+
+      // Send heartbeats at regular intervals
+      this.heartbeatInterval = setInterval(() => {
+        this.sendHeartbeat();
+      }, HEARTBEAT_INTERVAL);
+
+      // Check idle state more frequently
+      this.idleCheckInterval = setInterval(() => {
+        this.checkLocalIdleState();
+      }, IDLE_CHECK_INTERVAL);
+    }
+
+    /**
+     * Stop heartbeat sending
+     */
+    stopHeartbeat() {
+      if (this.heartbeatInterval) {
+        clearInterval(this.heartbeatInterval);
+        this.heartbeatInterval = null;
+      }
+      if (this.idleCheckInterval) {
+        clearInterval(this.idleCheckInterval);
+        this.idleCheckInterval = null;
+      }
+      this.hideIdleWarning();
+    }
+
+    /**
+     * Send heartbeat to the API
+     */
+    async sendHeartbeat() {
+      if (!this.sessionId || !this.hasActiveSession) {
+        return;
+      }
+
+      try {
+        const tokenData = await this.getToken();
+
+        const response = await fetch(
+          tokenData.api_url + "/sessions/" + this.sessionId + "/heartbeat",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Moodle-Token": tokenData.token,
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              activity_type: "browser",
+              tab_visible: this.isTabVisible,
+              focus_mode: this.focusMode,
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          console.warn("Heartbeat failed:", response.status);
+          return;
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.data) {
+          this.handleHeartbeatResponse(data.data);
+        }
+      } catch (error) {
+        console.warn("Error sending heartbeat:", error);
+      }
+    }
+
+    /**
+     * Handle heartbeat response from API
+     */
+    handleHeartbeatResponse(data) {
+      // Store thresholds for local idle checking
+      this.idleThresholds = {
+        warning: data.idle_warning_threshold,
+        termination: data.idle_termination_threshold,
+      };
+
+      // Check if session was terminated
+      if (data.status === "terminated") {
+        this.handleSessionTerminated("idle_timeout");
+        return;
+      }
+
+      // Handle idle warning states
+      if (data.idle_critical) {
+        this.showIdleWarning(data, "critical");
+      } else if (data.idle_warning) {
+        this.showIdleWarning(data, "warning");
+      } else {
+        this.hideIdleWarning();
+      }
+
+      // Update focus mode state from server
+      if (data.focus_mode !== this.focusMode) {
+        this.focusMode = data.focus_mode;
+      }
+    }
+
+    /**
+     * Check local idle state (between heartbeats)
+     */
+    checkLocalIdleState() {
+      if (!this.hasActiveSession || this.focusMode) {
+        return;
+      }
+
+      const idleSeconds = (Date.now() - this.lastUserActivity) / 1000;
+
+      // Use local thresholds if available, otherwise use defaults
+      const warningThreshold = this.idleThresholds?.warning || 900;
+
+      if (idleSeconds >= warningThreshold && !this.idleWarningShown) {
+        // Show local warning - actual termination is server-side
+        this.showIdleWarning(
+          {
+            idle_seconds: idleSeconds,
+            time_until_termination:
+              (this.idleThresholds?.termination || 1800) - idleSeconds,
+          },
+          "warning"
+        );
+      }
+    }
+
+    /**
+     * Show idle warning modal
+     */
+    showIdleWarning(data, level) {
+      if (this.focusMode) {
+        return; // Don't show warning in focus mode
+      }
+
+      const timeUntilTermination = Math.max(
+        0,
+        data.time_until_termination || 0
+      );
+      const minutes = Math.floor(timeUntilTermination / 60);
+      const seconds = Math.floor(timeUntilTermination % 60);
+
+      // Update countdown display
+      this.$idleCountdown.text(
+        `${minutes}:${seconds.toString().padStart(2, "0")}`
+      );
+
+      // If countdown reached 0:00, terminate session immediately
+      if (timeUntilTermination <= 0) {
+        this.hideIdleWarning();
+        // Call terminate API to immediately kill Guacamole session
+        this.terminateSessionDueToIdle();
+        return;
+      }
+
+      // Update message based on level
+      if (level === "critical") {
+        this.$idleWarning.addClass("idle-critical").removeClass("idle-warning");
+        this.$idleMessage.html(
+          this.strings.idleCriticalMessage ||
+            "<strong>Critical:</strong> Your session will be terminated very soon due to inactivity!"
+        );
+      } else {
+        this.$idleWarning.addClass("idle-warning").removeClass("idle-critical");
+        this.$idleMessage.html(
+          this.strings.idleWarningMessage ||
+            "Your session has been idle. It will be automatically terminated to save resources."
+        );
+      }
+
+      // Show modal if not already visible
+      if (!this.idleWarningShown) {
+        this.$idleWarning.fadeIn(300);
+        this.idleWarningShown = true;
+
+        // Play alert sound (if supported)
+        this.playIdleAlertSound();
+      }
+    }
+
+    /**
+     * Hide idle warning modal
+     */
+    hideIdleWarning() {
+      if (this.idleWarningShown) {
+        this.$idleWarning.fadeOut(300);
+        this.idleWarningShown = false;
+      }
+    }
+
+    /**
+     * Keep session active (dismiss warning and send activity signal)
+     */
+    async keepSessionActive() {
+      this.recordUserActivity();
+      this.hideIdleWarning();
+
+      // Send immediate heartbeat to reset server-side idle timer
+      await this.sendHeartbeat();
+    }
+
+    /**
+     * Enable focus mode (disable idle termination)
+     */
+    async enableFocusMode() {
+      this.focusMode = true;
+      this.hideIdleWarning();
+
+      // Send heartbeat with focus mode enabled
+      await this.sendHeartbeat();
+
+      // Show confirmation
+      alert(
+        "Focus mode enabled. Idle termination is now disabled for this session."
+      );
+    }
+
+    /**
+     * Terminate session due to idle timeout (frontend-initiated)
+     */
+    async terminateSessionDueToIdle() {
+      if (!this.sessionId) {
+        return;
+      }
+
+      try {
+        // Get token
+        const tokenData = await this.getToken();
+
+        // Call terminate endpoint to immediately kill Guacamole session
+        await fetch(tokenData.api_url + "/sessions/" + this.sessionId, {
+          method: "DELETE",
+          headers: {
+            "X-Moodle-Token": tokenData.token,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            reason: "idle_timeout",
+            stop_instance: false, // Return to pool
+          }),
+        });
+
+        // Handle termination locally
+        this.handleSessionTerminated("idle_timeout");
+      } catch (error) {
+        console.error("Error terminating idle session:", error);
+        // Still terminate locally even if API call fails
+        this.handleSessionTerminated("idle_timeout");
+      }
+    }
+
+    /**
+     * Handle session terminated by server
+     */
+    handleSessionTerminated(reason) {
+      this.stopHeartbeat();
+      this.stopSessionTimer();
+      this.hideIdleWarning(); // Make sure warning is hidden
+
+      this.sessionId = null;
+      this.hasActiveSession = false;
+      this.activeSessionUrl = null;
+
+      // Reset UI
+      this.$button.removeClass("attackbox-btn-active");
+      this.$button.find(".attackbox-btn-text").text(this.strings.buttonText);
+      this.$button.attr("title", this.strings.buttonTooltip);
+      this.$terminateButton.hide();
+
+      // Show message to user
+      if (reason === "idle_timeout") {
+        alert(
+          "Your session was terminated due to inactivity. You can launch a new session when needed."
+        );
+      }
+    }
+
+    /**
+     * Play alert sound for idle warning
+     */
+    playIdleAlertSound() {
+      try {
+        // Create a simple beep using Web Audio API
+        const audioContext = new (window.AudioContext ||
+          window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.frequency.value = 800;
+        oscillator.type = "sine";
+        gainNode.gain.value = 0.1;
+
+        oscillator.start();
+        setTimeout(() => {
+          oscillator.stop();
+          audioContext.close();
+        }, 200);
+      } catch (e) {
+        // Audio not supported, ignore
+      }
     }
 
     /**
@@ -223,6 +655,9 @@ define(["jquery", "core/str"], function ($, Str) {
             if (session.expires_at) {
               this.startSessionTimer(session.expires_at);
             }
+
+            // Start heartbeat for idle detection
+            this.startHeartbeat();
 
             console.log("Existing session restored:", this.sessionId);
           } else if (
@@ -310,7 +745,7 @@ define(["jquery", "core/str"], function ($, Str) {
       const html = `
         <div id="attackbox-quota-notification" class="attackbox-quota-notification" style="display: none;">
           <div class="attackbox-notification-content">
-            <span class="attackbox-notification-icon">⚠️</span>
+            <span class="attackbox-notification-icon">&#9888;</span>
             <span id="attackbox-notification-message" class="attackbox-notification-message"></span>
             <button id="attackbox-notification-close" class="attackbox-notification-close" type="button">×</button>
           </div>
@@ -336,7 +771,7 @@ define(["jquery", "core/str"], function ($, Str) {
            class="attackbox-usage-link" 
            title="${this.strings.buttonUsageDashboard}"
            target="_blank">
-          <span class="attackbox-usage-link-icon">📊</span>
+          <span class="attackbox-usage-link-icon">&#128202;</span>
           <span class="attackbox-usage-link-text">Usage</span>
         </a>
       `;
@@ -386,7 +821,7 @@ define(["jquery", "core/str"], function ($, Str) {
                                 </div>
                                 <div class="attackbox-terminal-body">
                                     <div id="attackbox-status-message" class="attackbox-status-message">
-                                        <span class="attackbox-cursor">▋</span>
+                                        <span class="attackbox-cursor">&#9611;</span>
                                     </div>
                                 </div>
                             </div>
@@ -407,12 +842,12 @@ define(["jquery", "core/str"], function ($, Str) {
                             <div class="attackbox-edu-visual">
                                 <div id="attackbox-attack-viz" class="attackbox-attack-viz">
                                     <div class="attackbox-attack-node attackbox-attacker">
-                                        <span class="attackbox-node-icon">👤</span>
+                                        <span class="attackbox-node-icon">&#128100;</span>
                                         <span class="attackbox-node-label">Attacker</span>
                                     </div>
                                     <div class="attackbox-attack-path" id="attackbox-attack-path"></div>
                                     <div class="attackbox-attack-node attackbox-target">
-                                        <span class="attackbox-node-icon">🎯</span>
+                                        <span class="attackbox-node-icon">&#127919;</span>
                                         <span class="attackbox-node-label">Target</span>
                                     </div>
                                 </div>
@@ -559,7 +994,7 @@ define(["jquery", "core/str"], function ($, Str) {
         $timeEstimate.hide().text("");
       }
       if ($statusMessage.length) {
-        $statusMessage.html('<span class="attackbox-cursor">▋</span>');
+        $statusMessage.html('<span class="attackbox-cursor">&#9611;</span>');
       }
 
       this.showOverlay();
@@ -903,6 +1338,9 @@ define(["jquery", "core/str"], function ($, Str) {
           this.startSessionTimer(session.expires_at);
         }
 
+        // Start heartbeat for idle detection
+        this.startHeartbeat();
+
         setTimeout(() => {
           this.showSuccess();
         }, 500);
@@ -951,6 +1389,9 @@ define(["jquery", "core/str"], function ($, Str) {
         if (session.expires_at) {
           this.startSessionTimer(session.expires_at);
         }
+
+        // Start heartbeat for idle detection
+        this.startHeartbeat();
 
         // Show success then open window
         setTimeout(() => {
@@ -1010,7 +1451,7 @@ define(["jquery", "core/str"], function ($, Str) {
 
       // Pending stage - quick
       if (status === "pending") {
-        return "⏱ ~5-15 seconds";
+        return "&#9201; ~5-15 seconds";
       }
 
       // Provisioning stage - varies by sub-stage
@@ -1022,9 +1463,9 @@ define(["jquery", "core/str"], function ($, Str) {
         ) {
           // Warm pool instance starting
           if (progress < 40) {
-            return "⏱ ~30-60 seconds";
+            return "&#9201; ~30-60 seconds";
           } else {
-            return "⏱ ~20-40 seconds";
+            return "&#9201; ~20-40 seconds";
           }
         } else if (
           stage === "waiting_health" ||
@@ -1036,29 +1477,29 @@ define(["jquery", "core/str"], function ($, Str) {
           const instanceStatus = healthChecks.instance_status;
 
           if (systemStatus === "passed" && instanceStatus === "passed") {
-            return "⏱ ~5-10 seconds";
+            return "&#9201; ~5-10 seconds";
           } else if (
             systemStatus === "initializing" ||
             instanceStatus === "initializing"
           ) {
-            return "⏱ ~60-120 seconds";
+            return "&#9201; ~60-120 seconds";
           } else {
-            return "⏱ ~30-90 seconds";
+            return "&#9201; ~30-90 seconds";
           }
         } else if (stage === "allocating" || progress < 15) {
           // Just allocated, starting provisioning
-          return "⏱ ~1-3 minutes";
+          return "&#9201; ~1-3 minutes";
         } else if (progress >= 85) {
           // Almost done
-          return "⏱ ~10-20 seconds";
+          return "&#9201; ~10-20 seconds";
         } else {
           // General provisioning
-          return "⏱ ~1-2 minutes";
+          return "&#9201; ~1-2 minutes";
         }
       }
 
       // Default fallback
-      return "⏱ ~1-2 minutes";
+      return "&#9201; ~1-2 minutes";
     }
 
     /**
@@ -1067,7 +1508,7 @@ define(["jquery", "core/str"], function ($, Str) {
     typeMessage(message) {
       const $container = this.$statusMessage;
       $container.html(
-        '<span class="attackbox-typed"></span><span class="attackbox-cursor">▋</span>'
+        '<span class="attackbox-typed"></span><span class="attackbox-cursor">&#9611;</span>'
       );
 
       const $typed = $container.find(".attackbox-typed");
@@ -1514,8 +1955,9 @@ define(["jquery", "core/str"], function ($, Str) {
         this.hasActiveSession = false;
         this.activeSessionUrl = null;
 
-        // Stop timer
+        // Stop timer and heartbeat
         this.stopSessionTimer();
+        this.stopHeartbeat();
 
         // Update UI
         this.$button.removeClass("attackbox-btn-active");
@@ -1569,6 +2011,11 @@ define(["jquery", "core/str"], function ($, Str) {
         "terminateConfirm",
         "terminateSuccess",
         "terminateError",
+        "idleWarningTitle",
+        "idleWarningMessage",
+        "idleCriticalMessage",
+        "idleKeepActive",
+        "idleFocusMode",
         "progress5",
         "progress10",
         "progress18",

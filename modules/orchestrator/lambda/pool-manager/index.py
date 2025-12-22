@@ -19,6 +19,7 @@ from utils import (
     AutoScalingClient,
     DynamoDBClient,
     EC2Client,
+    GuacamoleClient,
     InstanceStatus,
     SessionStatus,
     UsageTracker,
@@ -35,6 +36,33 @@ INSTANCE_POOL_TABLE = os.environ.get("INSTANCE_POOL_TABLE")
 USAGE_TABLE = os.environ.get("USAGE_TABLE")
 PROJECT_NAME = os.environ.get("PROJECT_NAME", "cyberlab")
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
+
+# Idle detection configuration
+ENABLE_IDLE_DETECTION = os.environ.get("ENABLE_IDLE_DETECTION", "true").lower() == "true"
+IDLE_HEARTBEAT_GRACE_PERIOD = int(os.environ.get("IDLE_HEARTBEAT_GRACE_PERIOD", "120"))  # 2 min grace
+
+# Guacamole configuration for activity checking
+GUACAMOLE_PRIVATE_IP = os.environ.get("GUACAMOLE_PRIVATE_IP", "")
+GUACAMOLE_PUBLIC_IP = os.environ.get("GUACAMOLE_PUBLIC_IP", "")
+GUACAMOLE_API_URL = os.environ.get("GUACAMOLE_API_URL", "")
+GUACAMOLE_ADMIN_USER = os.environ.get("GUACAMOLE_ADMIN_USER", "guacadmin")
+GUACAMOLE_ADMIN_PASS = os.environ.get("GUACAMOLE_ADMIN_PASS", "guacadmin")
+
+# Tier-specific idle thresholds (seconds)
+IDLE_THRESHOLDS = {
+    "freemium": {
+        "warning": int(os.environ.get("IDLE_WARNING_FREEMIUM", "900")),      # 15 min
+        "termination": int(os.environ.get("IDLE_TERMINATION_FREEMIUM", "1800")),  # 30 min
+    },
+    "starter": {
+        "warning": int(os.environ.get("IDLE_WARNING_STARTER", "1200")),      # 20 min
+        "termination": int(os.environ.get("IDLE_TERMINATION_STARTER", "2400")),   # 40 min
+    },
+    "pro": {
+        "warning": int(os.environ.get("IDLE_WARNING_PRO", "1800")),          # 30 min
+        "termination": int(os.environ.get("IDLE_TERMINATION_PRO", "3600")),       # 60 min
+    },
+}
 
 # Multi-tier ASG configuration
 ASG_NAME_FREEMIUM = os.environ.get("ASG_NAME_FREEMIUM", "")
@@ -79,6 +107,8 @@ def handler(event, context):
         results = {
             "expired_sessions_cleaned": 0,
             "orphaned_instances_released": 0,
+            "idle_sessions_warned": 0,
+            "idle_sessions_terminated": 0,
             "pools_synced": {},
             "scaling_actions": {},
         }
@@ -87,6 +117,12 @@ def handler(event, context):
         results["expired_sessions_cleaned"] = cleanup_expired_sessions(
             sessions_db, pool_db, ec2_client, now
         )
+        
+        # 1.5. Check for idle sessions and handle warnings/termination
+        if ENABLE_IDLE_DETECTION:
+            idle_results = check_idle_sessions(sessions_db, pool_db, ec2_client, now)
+            results["idle_sessions_warned"] = idle_results.get("warned", 0)
+            results["idle_sessions_terminated"] = idle_results.get("terminated", 0)
         
         # 2. Sync instance pool with ASGs (for each tier)
         for plan, asg_name in configured_asgs.items():
@@ -190,6 +226,233 @@ def cleanup_expired_sessions(sessions_db, pool_db, ec2_client, now: int) -> int:
                 cleaned += 1
     
     return cleaned
+
+
+def get_guacamole_internal_url() -> str:
+    """Get the internal Guacamole URL for API calls."""
+    if GUACAMOLE_API_URL:
+        return GUACAMOLE_API_URL
+    if GUACAMOLE_PUBLIC_IP:
+        return f"https://{GUACAMOLE_PUBLIC_IP}/guacamole"
+    if GUACAMOLE_PRIVATE_IP:
+        return f"https://{GUACAMOLE_PRIVATE_IP}/guacamole"
+    return ""
+
+
+def check_guacamole_activity_for_sessions(sessions: list) -> dict:
+    """
+    Check Guacamole for active connections across multiple sessions.
+    Returns a dict mapping connection_id to activity info.
+    """
+    internal_url = get_guacamole_internal_url()
+    if not internal_url:
+        return {}
+    
+    try:
+        guac = GuacamoleClient(
+            base_url=internal_url,
+            username=GUACAMOLE_ADMIN_USER,
+            password=GUACAMOLE_ADMIN_PASS,
+        )
+        
+        # Get all active connections at once (more efficient)
+        active_connections = guac.get_all_active_connections()
+        return active_connections
+        
+    except Exception as e:
+        logger.warning(f"Error checking Guacamole activity: {e}")
+        return {}
+
+
+def check_idle_sessions(sessions_db, pool_db, ec2_client, now: int) -> dict:
+    """
+    Check for idle sessions and handle warnings/termination.
+    
+    This function:
+    1. Queries active sessions
+    2. Checks Guacamole for actual connection activity
+    3. Compares last_active_at with thresholds
+    4. Updates sessions that are idle
+    5. Terminates sessions that exceed termination threshold
+    
+    Returns dict with warned and terminated counts.
+    """
+    results = {"warned": 0, "terminated": 0}
+    usage_tracker = UsageTracker(USAGE_TABLE) if USAGE_TABLE else None
+    
+    # Get all active sessions
+    active_sessions = []
+    for status in [SessionStatus.READY, SessionStatus.ACTIVE]:
+        sessions = sessions_db.query_by_index("StatusIndex", "status", status)
+        active_sessions.extend(sessions)
+    
+    if not active_sessions:
+        return results
+    
+    logger.info(f"Checking {len(active_sessions)} sessions for idle status")
+    
+    # Get Guacamole activity for all connections at once
+    guac_activity = check_guacamole_activity_for_sessions(active_sessions)
+    
+    for session in active_sessions:
+        session_id = session["session_id"]
+        student_id = session.get("student_id")
+        instance_id = session.get("instance_id")
+        created_at = session.get("created_at", now)
+        last_active_at = session.get("last_active_at", created_at)
+        last_heartbeat_at = session.get("last_heartbeat_at", 0)
+        idle_warning_sent_at = session.get("idle_warning_sent_at")
+        focus_mode = session.get("focus_mode", False)
+        plan = session.get("plan", "freemium")
+        
+        # Skip if focus mode is enabled (user opted out of idle termination)
+        if focus_mode:
+            logger.debug(f"Session {session_id} has focus mode enabled, skipping idle check")
+            continue
+        
+        # Check Guacamole activity for this session's connection
+        connection_info = session.get("connection_info", {})
+        guac_connection_id = connection_info.get("guacamole_connection_id")
+        
+        guac_connected = False
+        guac_last_activity = 0
+        
+        if guac_connection_id and guac_connection_id in guac_activity:
+            conn_activity = guac_activity[guac_connection_id]
+            guac_connected = conn_activity.get("total_connections", 0) > 0
+            
+            # Try to get last activity timestamp from active sessions
+            for active_session in conn_activity.get("active_sessions", []):
+                start_date = active_session.get("start_date")
+                if start_date:
+                    try:
+                        ts = int(start_date) // 1000
+                        if ts > guac_last_activity:
+                            guac_last_activity = ts
+                    except (ValueError, TypeError):
+                        pass
+        
+        # Determine effective last activity time
+        # Use the most recent of: last_active_at, last_heartbeat_at, guac_last_activity
+        effective_last_active = max(last_active_at, last_heartbeat_at, guac_last_activity)
+        
+        # If Guacamole shows active connection, consider the session active
+        if guac_connected:
+            # User is connected, update activity timestamp
+            if effective_last_active < now - IDLE_HEARTBEAT_GRACE_PERIOD:
+                effective_last_active = now
+        
+        # Calculate idle time
+        idle_seconds = now - effective_last_active
+        
+        # Get thresholds for this plan
+        plan_thresholds = IDLE_THRESHOLDS.get(plan, IDLE_THRESHOLDS["freemium"])
+        warning_threshold = plan_thresholds["warning"]
+        termination_threshold = plan_thresholds["termination"]
+        
+        logger.debug(f"Session {session_id}: idle={idle_seconds}s, warning={warning_threshold}s, "
+                    f"terminate={termination_threshold}s, guac_connected={guac_connected}")
+        
+        # Check if session should be terminated
+        if idle_seconds >= termination_threshold:
+            logger.info(f"Terminating idle session {session_id} (idle for {idle_seconds}s, threshold={termination_threshold}s)")
+            
+            # Kill active Guacamole sessions first
+            connection_info = session.get("connection_info", {})
+            guac_connection_id = connection_info.get("guacamole_connection_id")
+            
+            if guac_connection_id:
+                try:
+                    guac_url = get_guacamole_internal_url()
+                    if guac_url:
+                        guac = GuacamoleClient(
+                            base_url=guac_url,
+                            username=GUACAMOLE_ADMIN_USER,
+                            password=GUACAMOLE_ADMIN_PASS,
+                            timeout=3,
+                        )
+                        sessions_killed = guac.kill_active_sessions(guac_connection_id)
+                        if sessions_killed > 0:
+                            logger.info(f"Killed {sessions_killed} active Guacamole session(s) for idle-terminated session {session_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to kill Guacamole sessions for {session_id}: {e}")
+            
+            # Track usage before terminating
+            if usage_tracker and student_id:
+                duration_minutes = (now - created_at) / 60
+                if duration_minutes >= 0.5:
+                    try:
+                        usage_tracker.record_usage(
+                            user_id=student_id,
+                            minutes=int(duration_minutes)
+                        )
+                        logger.info(f"Recorded {int(duration_minutes)} minutes for idle-terminated session")
+                    except Exception as e:
+                        logger.error(f"Failed to record usage: {e}")
+            
+            # Update session status
+            sessions_db.update_item(
+                {"session_id": session_id},
+                {
+                    "status": SessionStatus.TERMINATED,
+                    "termination_reason": "idle_timeout",
+                    "terminated_at": now,
+                    "updated_at": now,
+                    "idle_seconds_at_termination": idle_seconds,
+                }
+            )
+            
+            # Release instance back to pool
+            if instance_id:
+                pool_db.update_item(
+                    {"instance_id": instance_id},
+                    {
+                        "status": InstanceStatus.AVAILABLE,
+                        "session_id": None,
+                        "student_id": None,
+                        "released_at": now,
+                    }
+                )
+                
+                ec2_client.tag_instance(instance_id, {
+                    "SessionId": "",
+                    "StudentId": "",
+                    "ReleasedAt": get_iso_timestamp(),
+                    "TerminationReason": "idle_timeout",
+                })
+            
+            results["terminated"] += 1
+            
+        # Check if warning should be sent/updated
+        elif idle_seconds >= warning_threshold:
+            if not idle_warning_sent_at:
+                logger.info(f"Session {session_id} entering idle warning state (idle for {idle_seconds}s)")
+                
+                sessions_db.update_item(
+                    {"session_id": session_id},
+                    {
+                        "idle_warning_sent_at": now,
+                        "idle_seconds": idle_seconds,
+                        "updated_at": now,
+                    }
+                )
+                
+                results["warned"] += 1
+        
+        # Clear warning if session became active again
+        elif idle_warning_sent_at and idle_seconds < warning_threshold:
+            logger.info(f"Session {session_id} became active, clearing idle warning")
+            
+            sessions_db.update_item(
+                {"session_id": session_id},
+                {
+                    "idle_warning_sent_at": None,
+                    "last_active_at": effective_last_active,
+                    "updated_at": now,
+                }
+            )
+    
+    return results
 
 
 def sync_instance_pool_for_plan(pool_db, ec2_client, asg_client, now: int, plan: str, asg_name: str) -> bool:
