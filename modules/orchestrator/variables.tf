@@ -182,46 +182,46 @@ variable "enable_idle_detection" {
 variable "idle_heartbeat_grace_period" {
   description = "Grace period in seconds before considering heartbeat stale"
   type        = number
-  default     = 120  # 2 minutes
+  default     = 60  # 2 minutes
 }
 
 # Freemium tier idle thresholds (more aggressive to conserve quota)
 variable "idle_warning_seconds_freemium" {
   description = "Seconds of inactivity before showing warning for freemium tier"
   type        = number
-  default     = 900  # 15 minutes
+  default     = 60  # 15 minutes
 }
 
 variable "idle_termination_seconds_freemium" {
   description = "Seconds of inactivity before auto-termination for freemium tier"
   type        = number
-  default     = 1800  # 30 minutes
+  default     = 180  # 30 minutes
 }
 
 # Starter tier idle thresholds (moderate)
 variable "idle_warning_seconds_starter" {
   description = "Seconds of inactivity before showing warning for starter tier"
   type        = number
-  default     = 1200  # 20 minutes
+  default     = 60  # 20 minutes
 }
 
 variable "idle_termination_seconds_starter" {
   description = "Seconds of inactivity before auto-termination for starter tier"
   type        = number
-  default     = 2400  # 40 minutes
+  default     = 180  # 40 minutes
 }
 
 # Pro tier idle thresholds (more relaxed)
 variable "idle_warning_seconds_pro" {
   description = "Seconds of inactivity before showing warning for pro tier"
   type        = number
-  default     = 180  # 3 minutes
+  default     = 60  # 30 minutes
 }
 
 variable "idle_termination_seconds_pro" {
   description = "Seconds of inactivity before auto-termination for pro tier"
   type        = number
-  default     = 300  # 5 minutes
+  default     = 180  # 60 minutes
 }
 
 variable "tags" {

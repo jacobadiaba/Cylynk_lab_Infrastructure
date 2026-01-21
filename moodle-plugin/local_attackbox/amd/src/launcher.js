@@ -179,31 +179,47 @@ define(["jquery", "core/str"], function ($, Str) {
       const html = `
         <div id="attackbox-idle-warning" class="attackbox-idle-warning" style="display: none;">
           <div class="attackbox-idle-warning-content">
-            <div class="attackbox-idle-warning-icon">&#9888;</div>
-            <h3 class="attackbox-idle-warning-title">${
-              this.strings.idleWarningTitle || "Session Idle Warning"
-            }</h3>
-            <p id="attackbox-idle-warning-message" class="attackbox-idle-warning-message">
-              ${
-                this.strings.idleWarningMessage ||
-                "Your session has been idle and will be terminated soon."
-              }
-            </p>
-            <div class="attackbox-idle-countdown">
-              <span class="attackbox-idle-countdown-label">Time until termination:</span>
-              <span id="attackbox-idle-countdown-time" class="attackbox-idle-countdown-time">--:--</span>
+            <div class="attackbox-idle-warning-header">
+              <div class="attackbox-idle-warning-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="8" x2="12" y2="12"/>
+                  <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+              </div>
+              <div class="attackbox-idle-warning-info">
+                <h4 class="attackbox-idle-warning-title">${
+                  this.strings.idleWarningTitle || "Session Idle"
+                }</h4>
+                <p id="attackbox-idle-warning-message" class="attackbox-idle-warning-message">
+                  ${
+                    this.strings.idleWarningMessage ||
+                    "Your session will be terminated in"
+                  } <strong id="attackbox-idle-countdown-time" class="attackbox-idle-countdown-time">--:--</strong>
+                </p>
+              </div>
+              <button id="attackbox-idle-close" class="attackbox-idle-close" type="button" aria-label="Close">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
             </div>
             <div class="attackbox-idle-warning-actions">
               <button id="attackbox-idle-keep-active" class="attackbox-btn-keep-active" type="button">
-                ${this.strings.idleKeepActive || "I'm still here!"}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                ${this.strings.idleKeepActive || "I'm Active"}
               </button>
               <button id="attackbox-idle-focus-mode" class="attackbox-btn-focus-mode" type="button">
-                ${this.strings.idleFocusMode || "Enable Focus Mode"}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
+                </svg>
+                ${this.strings.idleFocusMode || "Focus Mode"}
               </button>
             </div>
-            <p class="attackbox-idle-focus-note">
-              Focus mode disables idle termination for this session (useful for long-running tasks).
-            </p>
           </div>
         </div>
       `;
@@ -211,6 +227,9 @@ define(["jquery", "core/str"], function ($, Str) {
       this.$idleWarning = $("#attackbox-idle-warning");
       this.$idleCountdown = $("#attackbox-idle-countdown-time");
       this.$idleMessage = $("#attackbox-idle-warning-message");
+      
+      // Bind close button
+      $("#attackbox-idle-close").on("click", () => this.hideIdleWarning());
     }
 
     /**
@@ -423,14 +442,6 @@ define(["jquery", "core/str"], function ($, Str) {
         `${minutes}:${seconds.toString().padStart(2, "0")}`
       );
 
-      // If countdown reached 0:00, terminate session immediately
-      if (timeUntilTermination <= 0) {
-        this.hideIdleWarning();
-        // Call terminate API to immediately kill Guacamole session
-        this.terminateSessionDueToIdle();
-        return;
-      }
-
       // Update message based on level
       if (level === "critical") {
         this.$idleWarning.addClass("idle-critical").removeClass("idle-warning");
@@ -494,47 +505,11 @@ define(["jquery", "core/str"], function ($, Str) {
     }
 
     /**
-     * Terminate session due to idle timeout (frontend-initiated)
-     */
-    async terminateSessionDueToIdle() {
-      if (!this.sessionId) {
-        return;
-      }
-
-      try {
-        // Get token
-        const tokenData = await this.getToken();
-
-        // Call terminate endpoint to immediately kill Guacamole session
-        await fetch(tokenData.api_url + "/sessions/" + this.sessionId, {
-          method: "DELETE",
-          headers: {
-            "X-Moodle-Token": tokenData.token,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({
-            reason: "idle_timeout",
-            stop_instance: false, // Return to pool
-          }),
-        });
-
-        // Handle termination locally
-        this.handleSessionTerminated("idle_timeout");
-      } catch (error) {
-        console.error("Error terminating idle session:", error);
-        // Still terminate locally even if API call fails
-        this.handleSessionTerminated("idle_timeout");
-      }
-    }
-
-    /**
      * Handle session terminated by server
      */
     handleSessionTerminated(reason) {
       this.stopHeartbeat();
       this.stopSessionTimer();
-      this.hideIdleWarning(); // Make sure warning is hidden
 
       this.sessionId = null;
       this.hasActiveSession = false;
@@ -745,7 +720,7 @@ define(["jquery", "core/str"], function ($, Str) {
       const html = `
         <div id="attackbox-quota-notification" class="attackbox-quota-notification" style="display: none;">
           <div class="attackbox-notification-content">
-            <span class="attackbox-notification-icon">&#9888;</span>
+            <span class="attackbox-notification-icon">&#9888;&#65039;</span>
             <span id="attackbox-notification-message" class="attackbox-notification-message"></span>
             <button id="attackbox-notification-close" class="attackbox-notification-close" type="button">×</button>
           </div>
@@ -821,7 +796,7 @@ define(["jquery", "core/str"], function ($, Str) {
                                 </div>
                                 <div class="attackbox-terminal-body">
                                     <div id="attackbox-status-message" class="attackbox-status-message">
-                                        <span class="attackbox-cursor">&#9611;</span>
+                                        <span class="attackbox-cursor">▋</span>
                                     </div>
                                 </div>
                             </div>
@@ -994,7 +969,7 @@ define(["jquery", "core/str"], function ($, Str) {
         $timeEstimate.hide().text("");
       }
       if ($statusMessage.length) {
-        $statusMessage.html('<span class="attackbox-cursor">&#9611;</span>');
+        $statusMessage.html('<span class="attackbox-cursor">▋</span>');
       }
 
       this.showOverlay();
@@ -1138,6 +1113,8 @@ define(["jquery", "core/str"], function ($, Str) {
       const pollInterval = this.config.pollInterval || 3000;
       let attempts = 0;
       const maxAttempts = 200; // 10 minutes max (ASG scale-up + status checks can take 5-7 min)
+
+      console.log("Starting polling for session status");
 
       this.pollTimer = setInterval(async function () {
         attempts++;
@@ -1451,7 +1428,7 @@ define(["jquery", "core/str"], function ($, Str) {
 
       // Pending stage - quick
       if (status === "pending") {
-        return "&#9201; ~5-15 seconds";
+        return "⏱ ~5-15 seconds";
       }
 
       // Provisioning stage - varies by sub-stage
@@ -1463,9 +1440,9 @@ define(["jquery", "core/str"], function ($, Str) {
         ) {
           // Warm pool instance starting
           if (progress < 40) {
-            return "&#9201; ~30-60 seconds";
+            return "⏱ ~30-60 seconds";
           } else {
-            return "&#9201; ~20-40 seconds";
+            return "⏱ ~20-40 seconds";
           }
         } else if (
           stage === "waiting_health" ||
@@ -1477,29 +1454,29 @@ define(["jquery", "core/str"], function ($, Str) {
           const instanceStatus = healthChecks.instance_status;
 
           if (systemStatus === "passed" && instanceStatus === "passed") {
-            return "&#9201; ~5-10 seconds";
+            return "⏱ ~5-10 seconds";
           } else if (
             systemStatus === "initializing" ||
             instanceStatus === "initializing"
           ) {
-            return "&#9201; ~60-120 seconds";
+            return "⏱ ~60-120 seconds";
           } else {
-            return "&#9201; ~30-90 seconds";
+            return "⏱ ~30-90 seconds";
           }
         } else if (stage === "allocating" || progress < 15) {
           // Just allocated, starting provisioning
-          return "&#9201; ~1-3 minutes";
+          return "⏱ ~1-3 minutes";
         } else if (progress >= 85) {
           // Almost done
-          return "&#9201; ~10-20 seconds";
+          return "⏱ ~10-20 seconds";
         } else {
           // General provisioning
-          return "&#9201; ~1-2 minutes";
+          return "⏱ ~1-2 minutes";
         }
       }
 
       // Default fallback
-      return "&#9201; ~1-2 minutes";
+      return "⏱ ~1-2 minutes";
     }
 
     /**
@@ -1508,7 +1485,7 @@ define(["jquery", "core/str"], function ($, Str) {
     typeMessage(message) {
       const $container = this.$statusMessage;
       $container.html(
-        '<span class="attackbox-typed"></span><span class="attackbox-cursor">&#9611;</span>'
+        '<span class="attackbox-typed"></span><span class="attackbox-cursor">▋</span>'
       );
 
       const $typed = $container.find(".attackbox-typed");

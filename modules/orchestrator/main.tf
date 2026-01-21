@@ -274,6 +274,25 @@ resource "aws_iam_role_policy" "orchestrator_policy" {
         Resource = "arn:aws:ssm:${var.aws_region}:*:parameter/${var.project_name}/${var.environment}/*"
       },
       {
+        Sid    = "APIGatewayManagementAPI"
+        Effect = "Allow"
+        Action = [
+          "execute-api:ManageConnections"
+        ]
+        Resource = "arn:aws:execute-api:${var.aws_region}:*:*/*"
+      },
+      {
+        Sid    = "DynamoDBStreams"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:DescribeStream",
+          "dynamodb:GetRecords",
+          "dynamodb:GetShardIterator",
+          "dynamodb:ListStreams"
+        ]
+        Resource = "${aws_dynamodb_table.sessions.arn}/stream/*"
+      },
+      {
         Sid    = "SecretsManagerAccess"
         Effect = "Allow"
         Action = [
@@ -428,18 +447,17 @@ resource "aws_lambda_function" "terminate_session" {
 
   environment {
     variables = {
-      SESSIONS_TABLE            = aws_dynamodb_table.sessions.name
-      INSTANCE_POOL_TABLE       = aws_dynamodb_table.instance_pool.name
-      USAGE_TABLE               = aws_dynamodb_table.usage.name
-      GUACAMOLE_PRIVATE_IP      = var.guacamole_private_ip
-      GUACAMOLE_PUBLIC_IP       = var.guacamole_public_ip
-      GUACAMOLE_API_URL         = var.guacamole_api_url
-      GUACAMOLE_ADMIN_USER      = var.guacamole_admin_username
-      GUACAMOLE_ADMIN_PASS      = var.guacamole_admin_password
-      ENABLE_GUACAMOLE_CLEANUP  = "true"  # Re-enabled with public IP fix
-      ENVIRONMENT               = var.environment
-      PROJECT_NAME              = var.project_name
-      AWS_REGION_NAME           = var.aws_region
+      SESSIONS_TABLE       = aws_dynamodb_table.sessions.name
+      INSTANCE_POOL_TABLE  = aws_dynamodb_table.instance_pool.name
+      USAGE_TABLE          = aws_dynamodb_table.usage.name
+      GUACAMOLE_PRIVATE_IP = var.guacamole_private_ip
+      GUACAMOLE_PUBLIC_IP  = var.guacamole_public_ip
+      GUACAMOLE_API_URL    = var.guacamole_api_url
+      GUACAMOLE_ADMIN_USER = var.guacamole_admin_username
+      GUACAMOLE_ADMIN_PASS = var.guacamole_admin_password
+      ENVIRONMENT          = var.environment
+      PROJECT_NAME         = var.project_name
+      AWS_REGION_NAME      = var.aws_region
     }
   }
 
