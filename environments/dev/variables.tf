@@ -64,7 +64,7 @@ variable "student_lab_subnet_count" {
 variable "enable_nat_gateway" {
   description = "Enable NAT Gateway (not needed if attackbox_public_subnet is true)"
   type        = bool
-  default     = true
+ 
 }
 
 variable "attackbox_public_subnet" {

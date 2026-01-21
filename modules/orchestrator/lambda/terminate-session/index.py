@@ -47,16 +47,17 @@ def cleanup_guacamole_resources(connection_id: str, session_username: str = None
     Delete the Guacamole connection and session user for this session.
     
     This is a best-effort operation - failures here should NOT block session termination.
-    Uses a short timeout (3 seconds) to prevent blocking the termination process.
+    Uses a short timeout (2 seconds) to prevent blocking the termination process.
     
     Returns:
         dict with cleanup results
     """
-    # Prefer API URL, then public IP (for Lambdas outside VPC), then private IP
-    guac_url = GUACAMOLE_API_URL or (
-        f"https://{GUACAMOLE_PUBLIC_IP}/guacamole" if GUACAMOLE_PUBLIC_IP else (
-            f"https://{GUACAMOLE_PRIVATE_IP}/guacamole" if GUACAMOLE_PRIVATE_IP else ""
-        )
+    # Prefer public URL for Lambdas outside VPC, then explicit API URL, then private IP
+    # This helps avoid timeouts when Guacamole is only reachable via its public address.
+    guac_url = (
+        (f"https://{GUACAMOLE_PUBLIC_IP}/guacamole" if GUACAMOLE_PUBLIC_IP else None)
+        or (GUACAMOLE_API_URL or None)
+        or (f"https://{GUACAMOLE_PRIVATE_IP}/guacamole" if GUACAMOLE_PRIVATE_IP else "")
     )
     
     result = {
@@ -71,12 +72,13 @@ def cleanup_guacamole_resources(connection_id: str, session_username: str = None
         return result
     
     try:
-        # Use shorter timeout for Guacamole operations during termination
+        # Use very short timeout for Guacamole operations during termination
+        # This prevents Guacamole issues from blocking session termination
         guac = GuacamoleClient(
             base_url=guac_url,
             username=GUACAMOLE_ADMIN_USER,
             password=GUACAMOLE_ADMIN_PASS,
-            timeout=3,  # 3-second timeout for quick termination
+            timeout=2,  # 2-second timeout for quick termination
         )
         
         # Kill active sessions first (force disconnects users)
@@ -235,16 +237,7 @@ def handler(event, context):
                 else:
                     logger.warning(f"Failed to stop instance {instance_id}")
         
-        # Mark session as terminated
-        sessions_db.update_item(
-            {"session_id": session_id},
-            {
-                "status": SessionStatus.TERMINATED,
-                "updated_at": get_current_timestamp(),
-            }
-        )
-        
-        # Track usage if session was active
+        # Track usage if session was active (before marking as terminated)
         if USAGE_TABLE and session.get("student_id"):
             created_at = session.get("created_at", now)
             duration_minutes = (now - created_at) / 60
@@ -261,6 +254,22 @@ def handler(event, context):
                 except Exception as e:
                     logger.error(f"Failed to record usage: {e}")
                     # Don't fail the termination if usage tracking fails
+        
+        # Mark session as terminated - THIS MUST HAPPEN
+        logger.info(f"Marking session {session_id} as TERMINATED")
+        try:
+            sessions_db.update_item(
+                {"session_id": session_id},
+                {
+                    "status": SessionStatus.TERMINATED,
+                    "updated_at": get_current_timestamp(),
+                }
+            )
+            logger.info(f"Successfully marked session {session_id} as TERMINATED")
+        except Exception as e:
+            logger.error(f"CRITICAL: Failed to mark session {session_id} as TERMINATED: {e}")
+            # Re-raise to ensure we know about this failure
+            raise
         
         return success_response(
             {

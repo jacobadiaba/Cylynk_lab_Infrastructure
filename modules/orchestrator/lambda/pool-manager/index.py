@@ -357,26 +357,6 @@ def check_idle_sessions(sessions_db, pool_db, ec2_client, now: int) -> dict:
         if idle_seconds >= termination_threshold:
             logger.info(f"Terminating idle session {session_id} (idle for {idle_seconds}s, threshold={termination_threshold}s)")
             
-            # Kill active Guacamole sessions first
-            connection_info = session.get("connection_info", {})
-            guac_connection_id = connection_info.get("guacamole_connection_id")
-            
-            if guac_connection_id:
-                try:
-                    guac_url = get_guacamole_internal_url()
-                    if guac_url:
-                        guac = GuacamoleClient(
-                            base_url=guac_url,
-                            username=GUACAMOLE_ADMIN_USER,
-                            password=GUACAMOLE_ADMIN_PASS,
-                            timeout=3,
-                        )
-                        sessions_killed = guac.kill_active_sessions(guac_connection_id)
-                        if sessions_killed > 0:
-                            logger.info(f"Killed {sessions_killed} active Guacamole session(s) for idle-terminated session {session_id}")
-                except Exception as e:
-                    logger.warning(f"Failed to kill Guacamole sessions for {session_id}: {e}")
-            
             # Track usage before terminating
             if usage_tracker and student_id:
                 duration_minutes = (now - created_at) / 60

@@ -130,3 +130,4 @@ output "idle_detection_config" {
     }
   }
 }
+

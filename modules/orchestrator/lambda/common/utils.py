@@ -655,7 +655,13 @@ class GuacamoleClient:
     Creates RDP connections and generates client URLs.
     """
     
-    def __init__(self, base_url: str, username: str = "guacadmin", password: str = "guacadmin", timeout: int = 10):
+    def __init__(
+        self,
+        base_url: str,
+        username: str = "guacadmin",
+        password: str = "guacadmin",
+        timeout: int = 10,
+    ):
         """
         Initialize Guacamole client.
         
@@ -663,14 +669,15 @@ class GuacamoleClient:
             base_url: Guacamole base URL (e.g., https://guac.example.com/guacamole)
             username: Admin username
             password: Admin password
-            timeout: Request timeout in seconds (default: 10, use lower for non-critical operations)
         """
         self.base_url = base_url.rstrip("/")
         self.username = username
         self.password = password
         self.token = None
         self.data_source = "postgresql"  # Default data source
-        self.timeout = timeout  # Configurable timeout
+        # Per-request timeout in seconds for HTTP calls to Guacamole
+        # This can be overridden (e.g. shorter timeout for termination path)
+        self.timeout = timeout
         
         # Import here to avoid issues if not needed
         try:
@@ -714,7 +721,11 @@ class GuacamoleClient:
                 method=method
             )
             
-            with self.urllib_request.urlopen(request, context=self.ssl_context, timeout=self.timeout) as response:
+            with self.urllib_request.urlopen(
+                request,
+                context=self.ssl_context,
+                timeout=self.timeout,
+            ) as response:
                 response_body = response.read().decode("utf-8")
                 if response_body:
                     return json.loads(response_body)
@@ -846,57 +857,6 @@ class GuacamoleClient:
             logger.info(f"Deleted Guacamole connection: {connection_id}")
             return True
         return False
-    
-    def kill_active_sessions(self, connection_id: str) -> int:
-        """
-        Kill all active sessions for a specific connection.
-        
-        This forcibly terminates active browser/RDP sessions, closing them
-        for users who are currently connected.
-        
-        Args:
-            connection_id: The connection identifier
-            
-        Returns:
-            Number of sessions killed
-        """
-        if not self.token:
-            if not self.authenticate():
-                return 0
-        
-        try:
-            # Get all active connections
-            result = self._make_request(
-                "GET",
-                f"/session/data/{self.data_source}/activeConnections"
-            )
-            
-            if result is None:
-                return 0
-            
-            killed = 0
-            
-            # Find and kill sessions for this connection
-            for conn_key, conn_data in result.items():
-                conn_identifier = conn_data.get("connectionIdentifier", "")
-                
-                if str(conn_identifier) == str(connection_id):
-                    # Kill this active session
-                    # The conn_key is the active connection UUID
-                    delete_result = self._make_request(
-                        "DELETE",
-                        f"/session/data/{self.data_source}/activeConnections/{conn_key}"
-                    )
-                    
-                    if delete_result is not None:
-                        logger.info(f"Killed active Guacamole session: {conn_key} for connection {connection_id}")
-                        killed += 1
-            
-            return killed
-            
-        except Exception as e:
-            logger.error(f"Error killing active sessions: {e}")
-            return 0
     
     def get_connection_url(self, connection_id: str, connection_type: str = "c") -> str:
         """
@@ -1082,6 +1042,46 @@ class GuacamoleClient:
             return True
         return False
     
+    def kill_active_sessions(self, connection_id: str) -> int:
+        """
+        Kill all active sessions for a specific connection.
+        
+        Args:
+            connection_id: The connection ID to kill sessions for
+            
+        Returns:
+            Number of sessions killed
+        """
+        if not self.token:
+            if not self.authenticate():
+                return 0
+        
+        try:
+            # Get all active connections
+            active_conns = self.get_all_active_connections()
+            
+            killed_count = 0
+            for conn_id, conn_data in active_conns.items():
+                if conn_id == connection_id:
+                    # Kill each active session for this connection
+                    for session in conn_data.get("active_sessions", []):
+                        session_key = session.get("key")
+                        if session_key:
+                            result = self._make_request(
+                                "DELETE",
+                                f"/session/data/{self.data_source}/activeConnections/{session_key}"
+                            )
+                            if result is not None:
+                                killed_count += 1
+            
+            if killed_count > 0:
+                logger.info(f"Killed {killed_count} active session(s) for connection {connection_id}")
+            
+            return killed_count
+        except Exception as e:
+            logger.warning(f"Error killing active sessions for {connection_id}: {e}")
+            return 0
+    
     def delete_user(self, username: str) -> bool:
         """Delete a Guacamole user."""
         if not self.token:
@@ -1157,7 +1157,7 @@ class GuacamoleClient:
                 method="POST"
             )
             
-            with self.urllib_request.urlopen(request, context=self.ssl_context, timeout=self.timeout) as response:
+            with self.urllib_request.urlopen(request, context=self.ssl_context, timeout=10) as response:
                 result = json.loads(response.read().decode("utf-8"))
                 return result.get("authToken")
         except Exception as e:
