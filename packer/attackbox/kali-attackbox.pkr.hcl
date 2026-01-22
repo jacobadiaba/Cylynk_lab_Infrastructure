@@ -17,7 +17,7 @@ packer {
 # Variables
 variable "aws_region" {
   type    = string
-  default = "us-east-1"
+ 
 }
 
 variable "instance_type" {
@@ -32,12 +32,12 @@ variable "ami_name_prefix" {
 
 variable "environment" {
   type    = string
-  default = "production"
+  
 }
 
 variable "project_name" {
   type    = string
-  default = "cyberlab"
+  default = "cyLynk_lab"
 }
 
 variable "kali_version" {

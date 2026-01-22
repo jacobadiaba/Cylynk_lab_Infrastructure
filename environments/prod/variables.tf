@@ -58,7 +58,7 @@ variable "enable_nat_gateway" {
 }
 
 variable "attackbox_public_subnet" {
-  description = "Place AttackBox in public subnet (saves ~$35/month NAT cost, security groups protect instances)"
+  description = "Place AttackBox in public subnet"
   type        = bool
 }
 
@@ -93,7 +93,7 @@ variable "existing_key_pair_name" {
   type        = string
   validation {
     condition     = trimspace(var.existing_key_pair_name) != ""
-    error_message = "Existing_key_pair_name must be provided."
+    error_message = "existing_key_pair_name must be provided."
   }
 }
 
@@ -111,12 +111,6 @@ variable "guacamole_domain_name" {
 variable "enable_lets_encrypt" {
   description = "Enable Let's Encrypt SSL"
   type        = bool
-}
-
-# VPN Configuration
-variable "vpn_instance_type" {
-  description = "Instance type for VPN server"
-  type        = string
 }
 
 # Monitoring Configuration
@@ -155,19 +149,12 @@ variable "admin_email" {
   type        = string
 }
 
-
-
-
-
-
-
 # AttackBox Configuration
 variable "attackbox_ami_id" {
   description = "Custom AMI ID for AttackBox"
   type        = string
 }
 
-# Tier-based AttackBox configuration
 variable "attackbox_tiers" {
   description = "Configuration for each AttackBox tier (freemium, starter, pro)"
   type = map(object({
@@ -229,3 +216,4 @@ variable "rdp_password" {
   type        = string
   sensitive   = true
 }
+
