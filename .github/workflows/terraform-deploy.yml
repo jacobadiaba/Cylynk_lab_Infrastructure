@@ -70,6 +70,7 @@ jobs:
               run: |
                   cat > terraform.tfvars <<EOF
                   project_name                  = "${{ secrets.TF_VAR_PROJECT_NAME }}"
+                  environment                   = "${{ secrets.TF_VAR_ENVIRONMENT }}"
                   aws_region                    = "${{ secrets.TF_VAR_AWS_REGION }}"
                   owner                         = "${{ secrets.TF_VAR_OWNER }}"
                   cost_center                   = "${{ secrets.TF_VAR_COST_CENTER }}"
@@ -79,6 +80,7 @@ jobs:
                   student_labs_cidr             = "${{ secrets.TF_VAR_STUDENT_LABS_CIDR }}"
                   student_lab_subnet_count      = ${{ secrets.TF_VAR_STUDENT_LAB_SUBNET_COUNT }}
                   enable_nat_gateway            = ${{ secrets.TF_VAR_ENABLE_NAT_GATEWAY }}
+                  attackbox_public_subnet       = ${{ secrets.TF_VAR_ATTACKBOX_PUBLIC_SUBNET }}
                   enable_flow_logs              = ${{ secrets.TF_VAR_ENABLE_FLOW_LOGS }}
                   enable_vpc_endpoints          = ${{ secrets.TF_VAR_ENABLE_VPC_ENDPOINTS }}
                   allowed_ssh_cidr              = "${{ secrets.TF_VAR_ALLOWED_SSH_CIDR }}"
@@ -95,6 +97,42 @@ jobs:
                   enable_cost_anomaly_detection = ${{ secrets.TF_VAR_ENABLE_COST_ANOMALY_DETECTION }}
                   cost_anomaly_threshold        = ${{ secrets.TF_VAR_COST_ANOMALY_THRESHOLD }}
                   admin_email                   = "${{ secrets.TF_VAR_ADMIN_EMAIL }}"
+                  attackbox_ami_id              = "${{ secrets.TF_VAR_ATTACKBOX_AMI_ID }}"
+                  attackbox_tiers = {
+                    freemium = {
+                      instance_type = "${{ secrets.TF_VAR_FREEMIUM_INSTANCE_TYPE }}"
+                      pool_size     = ${{ secrets.TF_VAR_FREEMIUM_POOL_SIZE }}
+                      min_pool_size = ${{ secrets.TF_VAR_FREEMIUM_MIN_POOL_SIZE }}
+                      max_pool_size = ${{ secrets.TF_VAR_FREEMIUM_MAX_POOL_SIZE }}
+                      warm_pool_min = ${{ secrets.TF_VAR_FREEMIUM_WARM_POOL_MIN }}
+                      warm_pool_max = ${{ secrets.TF_VAR_FREEMIUM_WARM_POOL_MAX }}
+                    }
+                    starter = {
+                      instance_type = "${{ secrets.TF_VAR_STARTER_INSTANCE_TYPE }}"
+                      pool_size     = ${{ secrets.TF_VAR_STARTER_POOL_SIZE }}
+                      min_pool_size = ${{ secrets.TF_VAR_STARTER_MIN_POOL_SIZE }}
+                      max_pool_size = ${{ secrets.TF_VAR_STARTER_MAX_POOL_SIZE }}
+                      warm_pool_min = ${{ secrets.TF_VAR_STARTER_WARM_POOL_MIN }}
+                      warm_pool_max = ${{ secrets.TF_VAR_STARTER_WARM_POOL_MAX }}
+                    }
+                    pro = {
+                      instance_type = "${{ secrets.TF_VAR_PRO_INSTANCE_TYPE }}"
+                      pool_size     = ${{ secrets.TF_VAR_PRO_POOL_SIZE }}
+                      min_pool_size = ${{ secrets.TF_VAR_PRO_MIN_POOL_SIZE }}
+                      max_pool_size = ${{ secrets.TF_VAR_PRO_MAX_POOL_SIZE }}
+                      warm_pool_min = ${{ secrets.TF_VAR_PRO_WARM_POOL_MIN }}
+                      warm_pool_max = ${{ secrets.TF_VAR_PRO_WARM_POOL_MAX }}
+                    }
+                  }
+                  session_ttl_hours            = ${{ secrets.TF_VAR_SESSION_TTL_HOURS }}
+                  max_sessions_per_student     = ${{ secrets.TF_VAR_MAX_SESSIONS_PER_STUDENT }}
+                  enable_orchestrator_api_key  = ${{ secrets.TF_VAR_ENABLE_ORCHESTRATOR_API_KEY }}
+                  orchestrator_allowed_origins = ${{ secrets.TF_VAR_ORCHESTRATOR_ALLOWED_ORIGINS }}
+                  moodle_webhook_secret        = "${{ secrets.TF_VAR_MOODLE_WEBHOOK_SECRET }}"
+                  guacamole_admin_username     = "${{ secrets.TF_VAR_GUACAMOLE_ADMIN_USERNAME }}"
+                  guacamole_admin_password     = "${{ secrets.TF_VAR_GUACAMOLE_ADMIN_PASSWORD }}"
+                  rdp_username                 = "${{ secrets.TF_VAR_RDP_USERNAME }}"
+                  rdp_password                 = "${{ secrets.TF_VAR_RDP_PASSWORD }}"
                   EOF
 
             - name: Terraform Plan
@@ -166,6 +204,7 @@ jobs:
               run: |
                   cat > terraform.tfvars <<EOF
                   project_name                  = "${{ secrets.TF_VAR_PROJECT_NAME }}"
+                  environment                   = "${{ secrets.TF_VAR_PROD_ENVIRONMENT }}"
                   aws_region                    = "${{ secrets.TF_VAR_AWS_REGION }}"
                   owner                         = "${{ secrets.TF_VAR_OWNER }}"
                   cost_center                   = "${{ secrets.TF_VAR_COST_CENTER }}"
@@ -175,6 +214,7 @@ jobs:
                   student_labs_cidr             = "${{ secrets.TF_VAR_PROD_STUDENT_LABS_CIDR }}"
                   student_lab_subnet_count      = ${{ secrets.TF_VAR_PROD_STUDENT_LAB_SUBNET_COUNT }}
                   enable_nat_gateway            = ${{ secrets.TF_VAR_PROD_ENABLE_NAT_GATEWAY }}
+                  attackbox_public_subnet       = ${{ secrets.TF_VAR_PROD_ATTACKBOX_PUBLIC_SUBNET }}
                   enable_flow_logs              = ${{ secrets.TF_VAR_PROD_ENABLE_FLOW_LOGS }}
                   enable_vpc_endpoints          = ${{ secrets.TF_VAR_PROD_ENABLE_VPC_ENDPOINTS }}
                   allowed_ssh_cidr              = "${{ secrets.TF_VAR_PROD_ALLOWED_SSH_CIDR }}"
@@ -191,6 +231,42 @@ jobs:
                   enable_cost_anomaly_detection = ${{ secrets.TF_VAR_PROD_ENABLE_COST_ANOMALY_DETECTION }}
                   cost_anomaly_threshold        = ${{ secrets.TF_VAR_PROD_COST_ANOMALY_THRESHOLD }}
                   admin_email                   = "${{ secrets.TF_VAR_ADMIN_EMAIL }}"
+                  attackbox_ami_id              = "${{ secrets.TF_VAR_PROD_ATTACKBOX_AMI_ID }}"
+                  attackbox_tiers = {
+                    freemium = {
+                      instance_type = "${{ secrets.TF_VAR_PROD_FREEMIUM_INSTANCE_TYPE }}"
+                      pool_size     = ${{ secrets.TF_VAR_PROD_FREEMIUM_POOL_SIZE }}
+                      min_pool_size = ${{ secrets.TF_VAR_PROD_FREEMIUM_MIN_POOL_SIZE }}
+                      max_pool_size = ${{ secrets.TF_VAR_PROD_FREEMIUM_MAX_POOL_SIZE }}
+                      warm_pool_min = ${{ secrets.TF_VAR_PROD_FREEMIUM_WARM_POOL_MIN }}
+                      warm_pool_max = ${{ secrets.TF_VAR_PROD_FREEMIUM_WARM_POOL_MAX }}
+                    }
+                    starter = {
+                      instance_type = "${{ secrets.TF_VAR_PROD_STARTER_INSTANCE_TYPE }}"
+                      pool_size     = ${{ secrets.TF_VAR_PROD_STARTER_POOL_SIZE }}
+                      min_pool_size = ${{ secrets.TF_VAR_PROD_STARTER_MIN_POOL_SIZE }}
+                      max_pool_size = ${{ secrets.TF_VAR_PROD_STARTER_MAX_POOL_SIZE }}
+                      warm_pool_min = ${{ secrets.TF_VAR_PROD_STARTER_WARM_POOL_MIN }}
+                      warm_pool_max = ${{ secrets.TF_VAR_PROD_STARTER_WARM_POOL_MAX }}
+                    }
+                    pro = {
+                      instance_type = "${{ secrets.TF_VAR_PROD_PRO_INSTANCE_TYPE }}"
+                      pool_size     = ${{ secrets.TF_VAR_PROD_PRO_POOL_SIZE }}
+                      min_pool_size = ${{ secrets.TF_VAR_PROD_PRO_MIN_POOL_SIZE }}
+                      max_pool_size = ${{ secrets.TF_VAR_PROD_PRO_MAX_POOL_SIZE }}
+                      warm_pool_min = ${{ secrets.TF_VAR_PROD_PRO_WARM_POOL_MIN }}
+                      warm_pool_max = ${{ secrets.TF_VAR_PROD_PRO_WARM_POOL_MAX }}
+                    }
+                  }
+                  session_ttl_hours            = ${{ secrets.TF_VAR_PROD_SESSION_TTL_HOURS }}
+                  max_sessions_per_student     = ${{ secrets.TF_VAR_PROD_MAX_SESSIONS_PER_STUDENT }}
+                  enable_orchestrator_api_key  = ${{ secrets.TF_VAR_PROD_ENABLE_ORCHESTRATOR_API_KEY }}
+                  orchestrator_allowed_origins = ${{ secrets.TF_VAR_PROD_ORCHESTRATOR_ALLOWED_ORIGINS }}
+                  moodle_webhook_secret        = "${{ secrets.TF_VAR_PROD_MOODLE_WEBHOOK_SECRET }}"
+                  guacamole_admin_username     = "${{ secrets.TF_VAR_PROD_GUACAMOLE_ADMIN_USERNAME }}"
+                  guacamole_admin_password     = "${{ secrets.TF_VAR_PROD_GUACAMOLE_ADMIN_PASSWORD }}"
+                  rdp_username                 = "${{ secrets.TF_VAR_PROD_RDP_USERNAME }}"
+                  rdp_password                 = "${{ secrets.TF_VAR_PROD_RDP_PASSWORD }}"
                   EOF
 
             - name: Terraform Plan
