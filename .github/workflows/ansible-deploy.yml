@@ -55,7 +55,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION }}
           role-session-name: GitHubActions-AnsibleDeploy-Dev
 
       - name: Set up Python
@@ -76,7 +76,7 @@ jobs:
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_PRIVATE_KEY_DEV }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           eval $(ssh-agent -s)
           ssh-add ~/.ssh/id_rsa
@@ -125,9 +125,9 @@ jobs:
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
-            -e "enable_lets_encrypt=false" \
-            -e "domain_name=" \
-            -e "project_name=cyberlab" \
+            -e "enable_lets_encrypt=${{ vars.TF_VAR_ENABLE_LETS_ENCRYPT }}" \
+            -e "domain_name=${{ vars.TF_VAR_GUACAMOLE_DOMAIN_NAME }}" \
+            -e "project_name=${{ vars.TF_VAR_PROJECT_NAME }}" \
             --check \
             --diff \
             -v
@@ -141,9 +141,9 @@ jobs:
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
-            -e "enable_lets_encrypt=false" \
-            -e "domain_name=" \
-            -e "project_name=cyberlab" \
+            -e "enable_lets_encrypt=${{ vars.TF_VAR_ENABLE_LETS_ENCRYPT }}" \
+            -e "domain_name=${{ vars.TF_VAR_GUACAMOLE_DOMAIN_NAME }}" \
+            -e "project_name=${{ vars.TF_VAR_PROJECT_NAME }}" \
             --diff \
             -v
 
@@ -177,7 +177,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.PROD_AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION_PROD }}
           role-session-name: GitHubActions-AnsibleDeploy-Prod
 
       - name: Set up Python
@@ -198,7 +198,7 @@ jobs:
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_PRIVATE_KEY_PROD }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           eval $(ssh-agent -s)
           ssh-add ~/.ssh/id_rsa
@@ -242,7 +242,7 @@ jobs:
         if: github.event.inputs.check_mode == 'true'
         env:
           GUACAMOLE_DB_PASSWORD: ${{ secrets.PROD_GUACAMOLE_DB_PASSWORD }}
-          DOMAIN_NAME: ${{ secrets.PROD_GUACAMOLE_DOMAIN }}
+          DOMAIN_NAME: ${{ vars.TF_VAR_PROD_GUACAMOLE_DOMAIN_NAME }}
         run: |
           PLAYBOOK="${{ github.event.inputs.playbook }}"
           ENABLE_SSL="false"
@@ -254,7 +254,7 @@ jobs:
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             -e "enable_lets_encrypt=${ENABLE_SSL}" \
             -e "domain_name=${DOMAIN_NAME:-}" \
-            -e "project_name=cyberlab" \
+            -e "project_name=${{ vars.TF_VAR_PROJECT_NAME }}" \
             --check \
             --diff \
             -v
@@ -263,7 +263,7 @@ jobs:
         if: github.event.inputs.check_mode != 'true'
         env:
           GUACAMOLE_DB_PASSWORD: ${{ secrets.PROD_GUACAMOLE_DB_PASSWORD }}
-          DOMAIN_NAME: ${{ secrets.PROD_GUACAMOLE_DOMAIN }}
+          DOMAIN_NAME: ${{ vars.TF_VAR_PROD_GUACAMOLE_DOMAIN_NAME }}
         run: |
           PLAYBOOK="${{ github.event.inputs.playbook }}"
           ENABLE_SSL="false"
@@ -275,7 +275,7 @@ jobs:
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             -e "enable_lets_encrypt=${ENABLE_SSL}" \
             -e "domain_name=${DOMAIN_NAME:-}" \
-            -e "project_name=cyberlab" \
+            -e "project_name=${{ vars.TF_VAR_PROJECT_NAME }}" \
             --diff \
             -v
 

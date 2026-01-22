@@ -46,4 +46,6 @@ Desktop.ini
 
 secret_script.sh
 
-variables.pkrvars.hcl
+*pkrvars.hcl
+
+*.md

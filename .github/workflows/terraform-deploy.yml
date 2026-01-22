@@ -55,7 +55,7 @@ jobs:
               uses: aws-actions/configure-aws-credentials@v4
               with:
                   role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-                  aws-region: ${{ secrets.AWS_REGION }}
+                  aws-region: ${{ vars.AWS_REGION }}
                   role-session-name: GitHubActions-TerraformDeploy-Dev
 
             - name: Setup Terraform
@@ -66,46 +66,84 @@ jobs:
             - name: Terraform Init
               run: terraform init
 
-            - name: Create terraform.tfvars from secrets
+            - name: Create terraform.tfvars from variables and secrets
               run: |
                   cat > terraform.tfvars <<EOF
-                  project_name                  = "${{ secrets.TF_VAR_PROJECT_NAME }}"
-                  aws_region                    = "${{ secrets.TF_VAR_AWS_REGION }}"
-                  owner                         = "${{ secrets.TF_VAR_OWNER }}"
-                  cost_center                   = "${{ secrets.TF_VAR_COST_CENTER }}"
-                  vpc_cidr                      = "${{ secrets.TF_VAR_VPC_CIDR }}"
-                  management_subnet_cidr        = "${{ secrets.TF_VAR_MANAGEMENT_SUBNET_CIDR }}"
-                  attackbox_subnet_cidr         = "${{ secrets.TF_VAR_ATTACKBOX_SUBNET_CIDR }}"
-                  student_labs_cidr             = "${{ secrets.TF_VAR_STUDENT_LABS_CIDR }}"
-                  student_lab_subnet_count      = ${{ secrets.TF_VAR_STUDENT_LAB_SUBNET_COUNT }}
-                  enable_nat_gateway            = ${{ secrets.TF_VAR_ENABLE_NAT_GATEWAY }}
-                  enable_flow_logs              = ${{ secrets.TF_VAR_ENABLE_FLOW_LOGS }}
-                  enable_vpc_endpoints          = ${{ secrets.TF_VAR_ENABLE_VPC_ENDPOINTS }}
+                  project_name                  = "${{ vars.TF_VAR_PROJECT_NAME }}"
+                  environment                   = "${{ vars.TF_VAR_ENVIRONMENT }}"
+                  aws_region                    = "${{ vars.TF_VAR_AWS_REGION }}"
+                  owner                         = "${{ vars.TF_VAR_OWNER }}"
+                  cost_center                   = "${{ vars.TF_VAR_COST_CENTER }}"
+                  vpc_cidr                      = "${{ vars.TF_VAR_VPC_CIDR }}"
+                  management_subnet_cidr        = "${{ vars.TF_VAR_MANAGEMENT_SUBNET_CIDR }}"
+                  attackbox_subnet_cidr         = "${{ vars.TF_VAR_ATTACKBOX_SUBNET_CIDR }}"
+                  student_labs_cidr             = "${{ vars.TF_VAR_STUDENT_LABS_CIDR }}"
+                  student_lab_subnet_count      = ${{ vars.TF_VAR_STUDENT_LAB_SUBNET_COUNT }}
+                  enable_nat_gateway            = ${{ vars.TF_VAR_ENABLE_NAT_GATEWAY }}
+                  attackbox_public_subnet       = ${{ vars.TF_VAR_ATTACKBOX_PUBLIC_SUBNET }}
+                  enable_flow_logs              = ${{ vars.TF_VAR_ENABLE_FLOW_LOGS }}
+                  enable_vpc_endpoints          = ${{ vars.TF_VAR_ENABLE_VPC_ENDPOINTS }}
                   allowed_ssh_cidr              = "${{ secrets.TF_VAR_ALLOWED_SSH_CIDR }}"
-                  vpn_port                      = ${{ secrets.TF_VAR_VPN_PORT }}
-                  vpn_subnet_cidr               = "${{ secrets.TF_VAR_VPN_SUBNET_CIDR }}"
-                  existing_key_pair_name        = "${{ secrets.TF_VAR_KEY_PAIR_NAME }}"
-                  guacamole_instance_type       = "${{ secrets.TF_VAR_GUACAMOLE_INSTANCE_TYPE }}"
-                  guacamole_domain_name         = "${{ secrets.TF_VAR_GUACAMOLE_DOMAIN_NAME }}"
-                  enable_lets_encrypt           = ${{ secrets.TF_VAR_ENABLE_LETS_ENCRYPT }}
-                  vpn_instance_type             = "${{ secrets.TF_VAR_VPN_INSTANCE_TYPE }}"
-                  enable_sns_alarms             = ${{ secrets.TF_VAR_ENABLE_SNS_ALARMS }}
-                  alarm_email                   = "${{ secrets.TF_VAR_ALARM_EMAIL }}"
-                  log_retention_days            = ${{ secrets.TF_VAR_LOG_RETENTION_DAYS }}
-                  enable_cost_anomaly_detection = ${{ secrets.TF_VAR_ENABLE_COST_ANOMALY_DETECTION }}
-                  cost_anomaly_threshold        = ${{ secrets.TF_VAR_COST_ANOMALY_THRESHOLD }}
-                  admin_email                   = "${{ secrets.TF_VAR_ADMIN_EMAIL }}"
+                  vpn_port                      = ${{ vars.TF_VAR_VPN_PORT }}
+                  vpn_subnet_cidr               = "${{ vars.TF_VAR_VPN_SUBNET_CIDR }}"
+                  existing_key_pair_name        = "${{ vars.TF_VAR_KEY_PAIR_NAME }}"
+                  guacamole_instance_type       = "${{ vars.TF_VAR_GUACAMOLE_INSTANCE_TYPE }}"
+                  guacamole_domain_name         = "${{ vars.TF_VAR_GUACAMOLE_DOMAIN_NAME }}"
+                  enable_lets_encrypt           = ${{ vars.TF_VAR_ENABLE_LETS_ENCRYPT }}
+                  vpn_instance_type             = "${{ vars.TF_VAR_VPN_INSTANCE_TYPE }}"
+                  enable_sns_alarms             = ${{ vars.TF_VAR_ENABLE_SNS_ALARMS }}
+                  alarm_email                   = "${{ vars.TF_VAR_ALARM_EMAIL }}"
+                  log_retention_days            = ${{ vars.TF_VAR_LOG_RETENTION_DAYS }}
+                  enable_cost_anomaly_detection = ${{ vars.TF_VAR_ENABLE_COST_ANOMALY_DETECTION }}
+                  cost_anomaly_threshold        = ${{ vars.TF_VAR_COST_ANOMALY_THRESHOLD }}
+                  admin_email                   = "${{ vars.TF_VAR_ADMIN_EMAIL }}"
+                  attackbox_ami_id              = "${{ vars.TF_VAR_ATTACKBOX_AMI_ID }}"
+                  attackbox_tiers = {
+                    freemium = {
+                      instance_type = "${{ vars.TF_VAR_FREEMIUM_INSTANCE_TYPE }}"
+                      pool_size     = ${{ vars.TF_VAR_FREEMIUM_POOL_SIZE }}
+                      min_pool_size = ${{ vars.TF_VAR_FREEMIUM_MIN_POOL_SIZE }}
+                      max_pool_size = ${{ vars.TF_VAR_FREEMIUM_MAX_POOL_SIZE }}
+                      warm_pool_min = ${{ vars.TF_VAR_FREEMIUM_WARM_POOL_MIN }}
+                      warm_pool_max = ${{ vars.TF_VAR_FREEMIUM_WARM_POOL_MAX }}
+                    }
+                    starter = {
+                      instance_type = "${{ vars.TF_VAR_STARTER_INSTANCE_TYPE }}"
+                      pool_size     = ${{ vars.TF_VAR_STARTER_POOL_SIZE }}
+                      min_pool_size = ${{ vars.TF_VAR_STARTER_MIN_POOL_SIZE }}
+                      max_pool_size = ${{ vars.TF_VAR_STARTER_MAX_POOL_SIZE }}
+                      warm_pool_min = ${{ vars.TF_VAR_STARTER_WARM_POOL_MIN }}
+                      warm_pool_max = ${{ vars.TF_VAR_STARTER_WARM_POOL_MAX }}
+                    }
+                    pro = {
+                      instance_type = "${{ vars.TF_VAR_PRO_INSTANCE_TYPE }}"
+                      pool_size     = ${{ vars.TF_VAR_PRO_POOL_SIZE }}
+                      min_pool_size = ${{ vars.TF_VAR_PRO_MIN_POOL_SIZE }}
+                      max_pool_size = ${{ vars.TF_VAR_PRO_MAX_POOL_SIZE }}
+                      warm_pool_min = ${{ vars.TF_VAR_PRO_WARM_POOL_MIN }}
+                      warm_pool_max = ${{ vars.TF_VAR_PRO_WARM_POOL_MAX }}
+                    }
+                  }
+                  session_ttl_hours            = ${{ vars.TF_VAR_SESSION_TTL_HOURS }}
+                  max_sessions_per_student     = ${{ vars.TF_VAR_MAX_SESSIONS_PER_STUDENT }}
+                  enable_orchestrator_api_key  = ${{ vars.TF_VAR_ENABLE_ORCHESTRATOR_API_KEY }}
+                  orchestrator_allowed_origins = ${{ vars.TF_VAR_ORCHESTRATOR_ALLOWED_ORIGINS }}
+                  moodle_webhook_secret        = "${{ secrets.TF_VAR_MOODLE_WEBHOOK_SECRET }}"
+                  guacamole_admin_username     = "${{ secrets.TF_VAR_GUACAMOLE_ADMIN_USERNAME }}"
+                  guacamole_admin_password     = "${{ secrets.TF_VAR_GUACAMOLE_ADMIN_PASSWORD }}"
+                  rdp_username                 = "${{ secrets.TF_VAR_RDP_USERNAME }}"
+                  rdp_password                 = "${{ secrets.TF_VAR_RDP_PASSWORD }}"
                   EOF
 
             - name: Terraform Plan
               id: plan
               run: |
                   terraform plan -no-color -input=false -out=tfplan \
-                    -var="owner=${{ secrets.TF_VAR_OWNER }}" \
+                    -var="owner=${{ vars.TF_VAR_OWNER }}" \
                     -var="allowed_ssh_cidr=${{ secrets.TF_VAR_ALLOWED_SSH_CIDR }}" \
-                    -var="existing_key_pair_name=${{ secrets.TF_VAR_KEY_PAIR_NAME }}" \
-                    -var="alarm_email=${{ secrets.TF_VAR_ALARM_EMAIL }}" \
-                    -var="admin_email=${{ secrets.TF_VAR_ADMIN_EMAIL }}"
+                    -var="existing_key_pair_name=${{ vars.TF_VAR_KEY_PAIR_NAME }}" \
+                    -var="alarm_email=${{ vars.TF_VAR_ALARM_EMAIL }}" \
+                    -var="admin_email=${{ vars.TF_VAR_ADMIN_EMAIL }}"
                   terraform show -no-color tfplan
 
             - name: Terraform Apply
@@ -151,7 +189,7 @@ jobs:
               uses: aws-actions/configure-aws-credentials@v4
               with:
                   role-to-assume: ${{ secrets.PROD_AWS_ROLE_TO_ASSUME }}
-                  aws-region: ${{ secrets.AWS_REGION }}
+                  aws-region: ${{ vars.AWS_REGION_PROD }}
                   role-session-name: GitHubActions-TerraformDeploy-Prod
 
             - name: Setup Terraform
@@ -162,46 +200,84 @@ jobs:
             - name: Terraform Init
               run: terraform init
 
-            - name: Create terraform.tfvars from secrets
+            - name: Create terraform.tfvars from variables and secrets
               run: |
                   cat > terraform.tfvars <<EOF
-                  project_name                  = "${{ secrets.TF_VAR_PROJECT_NAME }}"
-                  aws_region                    = "${{ secrets.TF_VAR_AWS_REGION }}"
-                  owner                         = "${{ secrets.TF_VAR_OWNER }}"
-                  cost_center                   = "${{ secrets.TF_VAR_COST_CENTER }}"
-                  vpc_cidr                      = "${{ secrets.TF_VAR_PROD_VPC_CIDR }}"
-                  management_subnet_cidr        = "${{ secrets.TF_VAR_PROD_MANAGEMENT_SUBNET_CIDR }}"
-                  attackbox_subnet_cidr         = "${{ secrets.TF_VAR_PROD_ATTACKBOX_SUBNET_CIDR }}"
-                  student_labs_cidr             = "${{ secrets.TF_VAR_PROD_STUDENT_LABS_CIDR }}"
-                  student_lab_subnet_count      = ${{ secrets.TF_VAR_PROD_STUDENT_LAB_SUBNET_COUNT }}
-                  enable_nat_gateway            = ${{ secrets.TF_VAR_PROD_ENABLE_NAT_GATEWAY }}
-                  enable_flow_logs              = ${{ secrets.TF_VAR_PROD_ENABLE_FLOW_LOGS }}
-                  enable_vpc_endpoints          = ${{ secrets.TF_VAR_PROD_ENABLE_VPC_ENDPOINTS }}
+                  project_name                  = "${{ vars.TF_VAR_PROJECT_NAME }}"
+                  environment                   = "${{ vars.TF_VAR_PROD_ENVIRONMENT }}"
+                  aws_region                    = "${{ vars.TF_VAR_PROD_AWS_REGION }}"
+                  owner                         = "${{ vars.TF_VAR_PROD_OWNER }}"
+                  cost_center                   = "${{ vars.TF_VAR_PROD_COST_CENTER }}"
+                  vpc_cidr                      = "${{ vars.TF_VAR_PROD_VPC_CIDR }}"
+                  management_subnet_cidr        = "${{ vars.TF_VAR_PROD_MANAGEMENT_SUBNET_CIDR }}"
+                  attackbox_subnet_cidr         = "${{ vars.TF_VAR_PROD_ATTACKBOX_SUBNET_CIDR }}"
+                  student_labs_cidr             = "${{ vars.TF_VAR_PROD_STUDENT_LABS_CIDR }}"
+                  student_lab_subnet_count      = ${{ vars.TF_VAR_PROD_STUDENT_LAB_SUBNET_COUNT }}
+                  enable_nat_gateway            = ${{ vars.TF_VAR_PROD_ENABLE_NAT_GATEWAY }}
+                  attackbox_public_subnet       = ${{ vars.TF_VAR_PROD_ATTACKBOX_PUBLIC_SUBNET }}
+                  enable_flow_logs              = ${{ vars.TF_VAR_PROD_ENABLE_FLOW_LOGS }}
+                  enable_vpc_endpoints          = ${{ vars.TF_VAR_PROD_ENABLE_VPC_ENDPOINTS }}
                   allowed_ssh_cidr              = "${{ secrets.TF_VAR_PROD_ALLOWED_SSH_CIDR }}"
-                  vpn_port                      = ${{ secrets.TF_VAR_VPN_PORT }}
-                  vpn_subnet_cidr               = "${{ secrets.TF_VAR_PROD_VPN_SUBNET_CIDR }}"
-                  existing_key_pair_name        = "${{ secrets.TF_VAR_PROD_KEY_PAIR_NAME }}"
-                  guacamole_instance_type       = "${{ secrets.TF_VAR_PROD_GUACAMOLE_INSTANCE_TYPE }}"
-                  guacamole_domain_name         = "${{ secrets.TF_VAR_PROD_GUACAMOLE_DOMAIN_NAME }}"
-                  enable_lets_encrypt           = ${{ secrets.TF_VAR_PROD_ENABLE_LETS_ENCRYPT }}
-                  vpn_instance_type             = "${{ secrets.TF_VAR_PROD_VPN_INSTANCE_TYPE }}"
-                  enable_sns_alarms             = ${{ secrets.TF_VAR_PROD_ENABLE_SNS_ALARMS }}
-                  alarm_email                   = "${{ secrets.TF_VAR_ALARM_EMAIL }}"
-                  log_retention_days            = ${{ secrets.TF_VAR_PROD_LOG_RETENTION_DAYS }}
-                  enable_cost_anomaly_detection = ${{ secrets.TF_VAR_PROD_ENABLE_COST_ANOMALY_DETECTION }}
-                  cost_anomaly_threshold        = ${{ secrets.TF_VAR_PROD_COST_ANOMALY_THRESHOLD }}
-                  admin_email                   = "${{ secrets.TF_VAR_ADMIN_EMAIL }}"
+                  vpn_port                      = ${{ vars.TF_VAR_VPN_PORT }}
+                  vpn_subnet_cidr               = "${{ vars.TF_VAR_PROD_VPN_SUBNET_CIDR }}"
+                  existing_key_pair_name        = "${{ vars.TF_VAR_PROD_KEY_PAIR_NAME }}"
+                  guacamole_instance_type       = "${{ vars.TF_VAR_PROD_GUACAMOLE_INSTANCE_TYPE }}"
+                  guacamole_domain_name         = "${{ vars.TF_VAR_PROD_GUACAMOLE_DOMAIN_NAME }}"
+                  enable_lets_encrypt           = ${{ vars.TF_VAR_PROD_ENABLE_LETS_ENCRYPT }}
+                  vpn_instance_type             = "${{ vars.TF_VAR_PROD_VPN_INSTANCE_TYPE }}"
+                  enable_sns_alarms             = ${{ vars.TF_VAR_PROD_ENABLE_SNS_ALARMS }}
+                  alarm_email                   = "${{ vars.TF_VAR_ALARM_EMAIL }}"
+                  log_retention_days            = ${{ vars.TF_VAR_PROD_LOG_RETENTION_DAYS }}
+                  enable_cost_anomaly_detection = ${{ vars.TF_VAR_PROD_ENABLE_COST_ANOMALY_DETECTION }}
+                  cost_anomaly_threshold        = ${{ vars.TF_VAR_PROD_COST_ANOMALY_THRESHOLD }}
+                  admin_email                   = "${{ vars.TF_VAR_ADMIN_EMAIL }}"
+                  attackbox_ami_id              = "${{ vars.TF_VAR_PROD_ATTACKBOX_AMI_ID }}"
+                  attackbox_tiers = {
+                    freemium = {
+                      instance_type = "${{ vars.TF_VAR_PROD_FREEMIUM_INSTANCE_TYPE }}"
+                      pool_size     = ${{ vars.TF_VAR_PROD_FREEMIUM_POOL_SIZE }}
+                      min_pool_size = ${{ vars.TF_VAR_PROD_FREEMIUM_MIN_POOL_SIZE }}
+                      max_pool_size = ${{ vars.TF_VAR_PROD_FREEMIUM_MAX_POOL_SIZE }}
+                      warm_pool_min = ${{ vars.TF_VAR_PROD_FREEMIUM_WARM_POOL_MIN }}
+                      warm_pool_max = ${{ vars.TF_VAR_PROD_FREEMIUM_WARM_POOL_MAX }}
+                    }
+                    starter = {
+                      instance_type = "${{ vars.TF_VAR_PROD_STARTER_INSTANCE_TYPE }}"
+                      pool_size     = ${{ vars.TF_VAR_PROD_STARTER_POOL_SIZE }}
+                      min_pool_size = ${{ vars.TF_VAR_PROD_STARTER_MIN_POOL_SIZE }}
+                      max_pool_size = ${{ vars.TF_VAR_PROD_STARTER_MAX_POOL_SIZE }}
+                      warm_pool_min = ${{ vars.TF_VAR_PROD_STARTER_WARM_POOL_MIN }}
+                      warm_pool_max = ${{ vars.TF_VAR_PROD_STARTER_WARM_POOL_MAX }}
+                    }
+                    pro = {
+                      instance_type = "${{ vars.TF_VAR_PROD_PRO_INSTANCE_TYPE }}"
+                      pool_size     = ${{ vars.TF_VAR_PROD_PRO_POOL_SIZE }}
+                      min_pool_size = ${{ vars.TF_VAR_PROD_PRO_MIN_POOL_SIZE }}
+                      max_pool_size = ${{ vars.TF_VAR_PROD_PRO_MAX_POOL_SIZE }}
+                      warm_pool_min = ${{ vars.TF_VAR_PROD_PRO_WARM_POOL_MIN }}
+                      warm_pool_max = ${{ vars.TF_VAR_PROD_PRO_WARM_POOL_MAX }}
+                    }
+                  }
+                  session_ttl_hours            = ${{ vars.TF_VAR_PROD_SESSION_TTL_HOURS }}
+                  max_sessions_per_student     = ${{ vars.TF_VAR_PROD_MAX_SESSIONS_PER_STUDENT }}
+                  enable_orchestrator_api_key  = ${{ vars.TF_VAR_PROD_ENABLE_ORCHESTRATOR_API_KEY }}
+                  orchestrator_allowed_origins = ${{ vars.TF_VAR_PROD_ORCHESTRATOR_ALLOWED_ORIGINS }}
+                  moodle_webhook_secret        = "${{ secrets.TF_VAR_PROD_MOODLE_WEBHOOK_SECRET }}"
+                  guacamole_admin_username     = "${{ secrets.TF_VAR_PROD_GUACAMOLE_ADMIN_USERNAME }}"
+                  guacamole_admin_password     = "${{ secrets.TF_VAR_PROD_GUACAMOLE_ADMIN_PASSWORD }}"
+                  rdp_username                 = "${{ secrets.TF_VAR_PROD_RDP_USERNAME }}"
+                  rdp_password                 = "${{ secrets.TF_VAR_PROD_RDP_PASSWORD }}"
                   EOF
 
             - name: Terraform Plan
               id: plan
               run: |
                   terraform plan -no-color -input=false -out=tfplan \
-                    -var="owner=${{ secrets.TF_VAR_OWNER }}" \
+                    -var="owner=${{ vars.TF_VAR_PROD_OWNER }}" \
                     -var="allowed_ssh_cidr=${{ secrets.TF_VAR_PROD_ALLOWED_SSH_CIDR }}" \
-                    -var="existing_key_pair_name=${{ secrets.TF_VAR_PROD_KEY_PAIR_NAME }}" \
-                    -var="alarm_email=${{ secrets.TF_VAR_ALARM_EMAIL }}" \
-                    -var="admin_email=${{ secrets.TF_VAR_ADMIN_EMAIL }}"
+                    -var="existing_key_pair_name=${{ vars.TF_VAR_PROD_KEY_PAIR_NAME }}" \
+                    -var="alarm_email=${{ vars.TF_VAR_ALARM_EMAIL }}" \
+                    -var="admin_email=${{ vars.TF_VAR_ADMIN_EMAIL }}"
                   terraform show -no-color tfplan
 
             - name: Terraform Apply

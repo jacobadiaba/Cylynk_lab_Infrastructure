@@ -17,7 +17,7 @@ provider "aws" {
   default_tags {
     tags = {
       Project     = var.project_name
-      Environment = "dev"
+      Environment = "production"
       ManagedBy   = "Terraform"
       Owner       = var.owner
       CostCenter  = var.cost_center
@@ -30,7 +30,7 @@ data "aws_caller_identity" "current" {}
 
 # Local variables
 locals {
-  environment = "dev"
+  environment = "production"
 
   common_tags = {
     Project     = var.project_name
@@ -52,11 +52,11 @@ module "networking" {
   student_labs_cidr         = var.student_labs_cidr
   student_lab_subnet_count  = var.student_lab_subnet_count
   enable_nat_gateway        = var.enable_nat_gateway
-  attackbox_public_subnet   = var.attackbox_public_subnet  
+  attackbox_public_subnet   = var.attackbox_public_subnet
   enable_flow_logs          = var.enable_flow_logs
   flow_logs_role_arn        = module.monitoring.flow_logs_role_arn
   flow_logs_destination_arn = module.monitoring.flow_logs_log_group_arn
-  enable_vpc_endpoints      = true  # Enabled for cost optimization
+  enable_vpc_endpoints      = var.enable_vpc_endpoints
 
   tags = local.common_tags
 }
@@ -109,7 +109,7 @@ module "guacamole" {
   domain_name                = var.guacamole_domain_name
   admin_email                = var.admin_email
   enable_lets_encrypt        = var.enable_lets_encrypt
-  log_retention_days         = 7  # Reduced for cost optimization in dev
+  log_retention_days         = var.log_retention_days
   cpu_alarm_threshold        = 80
   memory_alarm_threshold     = 85
   alarm_sns_topic_arns       = compact([module.monitoring.sns_topic_arn])
@@ -117,8 +117,7 @@ module "guacamole" {
   tags = local.common_tags
 }
 
-
-# AttackBox Module - Freemium Tier (t3.small for cost savings)
+# AttackBox Module - Freemium Tier
 module "attackbox_freemium" {
   source = "../../modules/attackbox"
 
@@ -132,12 +131,10 @@ module "attackbox_freemium" {
   key_name                  = module.security.key_pair_name
   guacamole_private_ip      = module.guacamole.private_ip
 
-  # Pool configuration
   pool_size     = var.attackbox_tiers["freemium"].pool_size
   min_pool_size = var.attackbox_tiers["freemium"].min_pool_size
   max_pool_size = var.attackbox_tiers["freemium"].max_pool_size
 
-  # Warm pool configuration for fast instance launches (30-60 seconds)
   warm_pool_min_size                    = var.attackbox_tiers["freemium"].warm_pool_min
   warm_pool_max_group_prepared_capacity = var.attackbox_tiers["freemium"].warm_pool_max
 
@@ -145,15 +142,14 @@ module "attackbox_freemium" {
   use_custom_ami = false
   custom_ami_id  = var.attackbox_ami_id
 
-  # Features
-  enable_auto_scaling      = true
-  enable_session_tracking  = false  # Use orchestrator for session tracking
-  enable_notifications     = false
+  enable_auto_scaling     = true
+  enable_session_tracking = false
+  enable_notifications    = true
 
   tags = local.common_tags
 }
 
-# AttackBox Module - Starter Tier (t3.medium - balanced)
+# AttackBox Module - Starter Tier
 module "attackbox_starter" {
   source = "../../modules/attackbox"
 
@@ -167,12 +163,10 @@ module "attackbox_starter" {
   key_name                  = module.security.key_pair_name
   guacamole_private_ip      = module.guacamole.private_ip
 
-  # Pool configuration
   pool_size     = var.attackbox_tiers["starter"].pool_size
   min_pool_size = var.attackbox_tiers["starter"].min_pool_size
   max_pool_size = var.attackbox_tiers["starter"].max_pool_size
 
-  # Warm pool configuration for fast instance launches (30-60 seconds)
   warm_pool_min_size                    = var.attackbox_tiers["starter"].warm_pool_min
   warm_pool_max_group_prepared_capacity = var.attackbox_tiers["starter"].warm_pool_max
 
@@ -180,15 +174,14 @@ module "attackbox_starter" {
   use_custom_ami = false
   custom_ami_id  = var.attackbox_ami_id
 
-  # Features
-  enable_auto_scaling      = true
-  enable_session_tracking  = false  # Use orchestrator for session tracking
-  enable_notifications     = false
+  enable_auto_scaling     = true
+  enable_session_tracking = false
+  enable_notifications    = true
 
   tags = local.common_tags
 }
 
-# AttackBox Module - Pro Tier (t3.large - high performance)
+# AttackBox Module - Pro Tier
 module "attackbox_pro" {
   source = "../../modules/attackbox"
 
@@ -202,12 +195,10 @@ module "attackbox_pro" {
   key_name                  = module.security.key_pair_name
   guacamole_private_ip      = module.guacamole.private_ip
 
-  # Pool configuration
   pool_size     = var.attackbox_tiers["pro"].pool_size
   min_pool_size = var.attackbox_tiers["pro"].min_pool_size
   max_pool_size = var.attackbox_tiers["pro"].max_pool_size
 
-  # Warm pool configuration for fast instance launches (30-60 seconds)
   warm_pool_min_size                    = var.attackbox_tiers["pro"].warm_pool_min
   warm_pool_max_group_prepared_capacity = var.attackbox_tiers["pro"].warm_pool_max
 
@@ -215,10 +206,9 @@ module "attackbox_pro" {
   use_custom_ami = false
   custom_ami_id  = var.attackbox_ami_id
 
-  # Features
-  enable_auto_scaling      = true
-  enable_session_tracking  = false  # Use orchestrator for session tracking
-  enable_notifications     = local.environment == "production"
+  enable_auto_scaling     = true
+  enable_session_tracking = false
+  enable_notifications    = true
 
   tags = local.common_tags
 }
@@ -231,8 +221,7 @@ module "orchestrator" {
   environment  = local.environment
   aws_region   = var.aws_region
 
-  # Networking - Disable VPC config for simpler testing (no VPC endpoints needed)
-  # Set enable_vpc_config = true if you have DynamoDB VPC endpoints configured
+  # Networking
   enable_vpc_config        = false
   vpc_id                   = module.networking.vpc_id
   subnet_ids               = [module.networking.management_subnet_id]
@@ -279,7 +268,7 @@ module "orchestrator" {
   moodle_webhook_secret = var.moodle_webhook_secret
 
   # Monitoring
-  log_retention_days   = 7  # Reduced for cost optimization in dev
+  log_retention_days   = var.log_retention_days
   enable_xray_tracing  = false
   alarm_sns_topic_arns = compact([module.monitoring.sns_topic_arn])
 
@@ -294,28 +283,18 @@ module "cost_optimization" {
   environment  = local.environment
   aws_region   = var.aws_region
 
-  # Budget Configuration - Dev Environment (Disabled - may conflict with existing budgets)
-  enable_daily_budget   = false  # Set to true if you want daily budget alerts
-  daily_budget_limit    = 15     # $15/day for dev
-  enable_monthly_budget = false  # Set to true if you want monthly budget alerts
-  monthly_budget_limit  = 400    # $400/month for dev
+  enable_daily_budget   = false
+  enable_monthly_budget = false
   budget_alert_emails   = [var.admin_email]
 
-  # EC2 Usage Budget (Disabled to avoid conflicts)
-  enable_ec2_usage_budget = false
-  ec2_usage_hours_limit   = 720  # ~30 days * 24 hours for dev pool
-
-  # Compute Optimizer (Free service, no limits)
-  enable_compute_optimizer = true
-
-  # Cost Anomaly Detection (Disabled - AWS account limit reached)
-  enable_cost_anomaly_detection = false  # Enable only if you haven't reached AWS anomaly monitor limit
+  enable_ec2_usage_budget     = false
+  enable_compute_optimizer    = true
+  enable_cost_dashboard       = true
+  enable_cost_alarms          = true
+  enable_cost_anomaly_detection = var.enable_cost_anomaly_detection
   anomaly_alert_emails          = [var.admin_email]
-  anomaly_threshold_amount      = "10"  # Alert on $10+ anomalies
 
-  # Monitoring
-  enable_cost_dashboard = true
-  enable_cost_alarms    = true
-  log_retention_days    = 7  # Match other CloudWatch log retention
-  tags = local.common_tags
+  log_retention_days = var.log_retention_days
+  tags               = local.common_tags
 }
+

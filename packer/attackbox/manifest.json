@@ -134,7 +134,37 @@
         "kali_version": "2024.1",
         "project": "cyberlab"
       }
+    },
+    {
+      "name": "kali_attackbox",
+      "builder_type": "amazon-ebs",
+      "build_time": 1768996381,
+      "files": null,
+      "artifact_id": "us-west-2:ami-0ddef71fb21c607b7",
+      "packer_run_uuid": "86e13ab7-c82e-d704-c47f-ab3d240671ae",
+      "custom_data": {
+        "ami_name": "cyberlab-attackbox-kali-dev-20260121112239",
+        "build_time": "20260121112239",
+        "environment": "dev",
+        "kali_version": "2024.1",
+        "project": "cyLynk_lab"
+      }
+    },
+    {
+      "name": "kali_attackbox",
+      "builder_type": "amazon-ebs",
+      "build_time": 1768998265,
+      "files": null,
+      "artifact_id": "us-east-1:ami-06435c549b5ef36ee",
+      "packer_run_uuid": "2c0ee0dc-fa1a-d961-4803-dbd988f606f6",
+      "custom_data": {
+        "ami_name": "cyberlab-attackbox-kali-prod-20260121115525",
+        "build_time": "20260121115525",
+        "environment": "production",
+        "kali_version": "2024.1",
+        "project": "cyLynk_lab"
+      }
     }
   ],
-  "last_run_uuid": "c3c97be6-a591-5c7e-62eb-b5290b58ae2b"
+  "last_run_uuid": "2c0ee0dc-fa1a-d961-4803-dbd988f606f6"
 }
