@@ -196,6 +196,96 @@
     timeout: 300
     state: started
 
+# ============================================================================
+# Update Guacamole Admin Password (if custom password provided)
+# ============================================================================
+- name: Update Guacamole admin password
+  when: guacamole_admin_password is defined and guacamole_admin_password != "" and guacamole_admin_password != "guacadmin"
+  block:
+    - name: Wait for Guacamole API to be available
+      ansible.builtin.uri:
+        url: "http://localhost:8080/guacamole/api/tokens"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          username: "guacadmin"
+          password: "guacadmin"
+        status_code: [200, 403]
+      register: guac_api_check
+      retries: 10
+      delay: 5
+      until: guac_api_check.status in [200, 403]
+
+    - name: Authenticate with default credentials
+      ansible.builtin.uri:
+        url: "http://localhost:8080/guacamole/api/tokens"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          username: "guacadmin"
+          password: "guacadmin"
+        status_code: [200]
+      register: guac_auth_default
+      ignore_errors: true
+
+    - name: Get admin user details
+      ansible.builtin.uri:
+        url: "http://localhost:8080/guacamole/api/session/data/postgresql/users/guacadmin?token={{ guac_auth_default.json.authToken }}"
+        method: GET
+        return_content: yes
+      register: admin_user_details
+      when: guac_auth_default is succeeded
+
+    - name: Update admin password via API
+      ansible.builtin.uri:
+        url: "http://localhost:8080/guacamole/api/session/data/postgresql/users/guacadmin?token={{ guac_auth_default.json.authToken }}"
+        method: PUT
+        body_format: json
+        body:
+          username: "guacadmin"
+          password: "{{ guacamole_admin_password }}"
+          attributes:
+            disabled: ""
+            expired: ""
+            access-window-start: ""
+            access-window-end: ""
+            valid-from: ""
+            valid-until: ""
+            timezone: null
+            guac-full-name: ""
+            guac-email-address: ""
+            guac-organization: ""
+            guac-organizational-role: ""
+        status_code: [204]
+      register: password_update_result
+      when: guac_auth_default is succeeded
+      no_log: true
+
+    - name: Verify new password works
+      ansible.builtin.uri:
+        url: "http://localhost:8080/guacamole/api/tokens"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          username: "guacadmin"
+          password: "{{ guacamole_admin_password }}"
+        status_code: [200]
+      register: guac_auth_new
+      when: password_update_result is succeeded
+      no_log: true
+
+    - name: Admin password update status
+      ansible.builtin.debug:
+        msg: "Guacamole admin password has been updated successfully"
+      when: guac_auth_new is succeeded
+
+    - name: Skip password update if already changed
+      ansible.builtin.debug:
+        msg: "Guacamole admin password was already changed (default credentials failed). Skipping update."
+      when: guac_auth_default is failed
+
+# ============================================================================
+
 - name: Create systemd service for Guacamole
   ansible.builtin.template:
     src: guacamole.service.j2

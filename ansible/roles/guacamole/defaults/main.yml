@@ -13,6 +13,11 @@ guacamole_user: "ubuntu"
 # Project name for tagging
 project_name: "cyberlab"
 
+# Guacamole admin credentials
+# If guacamole_admin_password is set to something other than "guacadmin",
+# the role will automatically update the admin password after deployment
+# guacamole_admin_password: "your-secure-password"
+
 # Let's Encrypt configuration (Prod only)
 # Set to true to enable Let's Encrypt SSL certificates
 enable_lets_encrypt: false

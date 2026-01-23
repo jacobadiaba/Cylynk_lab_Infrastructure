@@ -23,9 +23,29 @@ This role deploys Apache Guacamole on Ubuntu servers using Docker and Docker Com
 - `docker_compose_version`: Docker Compose version (default: `v2.24.0`)
 - `guacamole_base_dir`: Base directory for Guacamole (default: `/opt/guacamole`)
 - `guacamole_user`: User to run Guacamole services (default: `ubuntu`)
+- `guacamole_admin_password`: Admin password (if set, auto-updates from default `guacadmin`)
 - `domain_name`: Domain name for Let's Encrypt (default: `""`)
 - `enable_lets_encrypt`: Enable Let's Encrypt SSL (default: `false`)
 - `letsencrypt_email`: Email for Let's Encrypt notifications (default: `admin@<domain_name>`)
+
+## Admin Password Management
+
+The role can automatically update the Guacamole admin password from the default `guacadmin`:
+
+```yaml
+guacamole_admin_password: "your-secure-password"
+```
+
+**How it works:**
+
+- If `guacamole_admin_password` is set to something other than `guacadmin`, the role will:
+  1. Authenticate with the default credentials
+  2. Update the password via the Guacamole REST API
+  3. Verify the new password works
+- If the default credentials fail (password already changed), the task is skipped
+- This is idempotent - safe to run multiple times
+
+**GitHub Actions:** Add secrets `GUACAMOLE_ADMIN_PASSWORD` (dev) and `PROD_GUACAMOLE_ADMIN_PASSWORD` (prod).
 
 ## Let's Encrypt SSL (Production)
 
