@@ -135,6 +135,7 @@ jobs:
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             -e "enable_lets_encrypt=${{ vars.TF_VAR_ENABLE_LETS_ENCRYPT }}" \
             -e "domain_name=${{ vars.TF_VAR_GUACAMOLE_DOMAIN_NAME }}" \
+            -e "admin_email=${{ vars.TF_VAR_ADMIN_EMAIL }}" \
             -e "project_name=${{ vars.TF_VAR_PROJECT_NAME }}" \
             --check \
             --diff \
@@ -151,6 +152,7 @@ jobs:
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             -e "enable_lets_encrypt=${{ vars.TF_VAR_ENABLE_LETS_ENCRYPT }}" \
             -e "domain_name=${{ vars.TF_VAR_GUACAMOLE_DOMAIN_NAME }}" \
+            -e "admin_email=${{ vars.TF_VAR_ADMIN_EMAIL }}" \
             -e "project_name=${{ vars.TF_VAR_PROJECT_NAME }}" \
             --diff \
             -v
@@ -287,6 +289,7 @@ jobs:
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             -e "enable_lets_encrypt=${ENABLE_SSL}" \
             -e "domain_name=${DOMAIN_NAME:-}" \
+            -e "admin_email=${{ vars.TF_VAR_ADMIN_EMAIL }}" \
             -e "project_name=${{ vars.TF_VAR_PROJECT_NAME }}" \
             --check \
             --diff \
@@ -308,6 +311,7 @@ jobs:
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
             -e "enable_lets_encrypt=${ENABLE_SSL}" \
             -e "domain_name=${DOMAIN_NAME:-}" \
+            -e "admin_email=${{ vars.TF_VAR_ADMIN_EMAIL }}" \
             -e "project_name=${{ vars.TF_VAR_PROJECT_NAME }}" \
             --diff \
             -v
