@@ -37,6 +37,7 @@ guacamole_admin_password: "your-secure-password"
 ```
 
 **How it works:**
+
 - If `guacamole_admin_password` is set to something other than `guacadmin`, the role will:
   1. Authenticate with the default credentials
   2. Update the password via the Guacamole REST API
