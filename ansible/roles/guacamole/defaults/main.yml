@@ -1,0 +1,26 @@
+---
+# Default variables for Guacamole role
+
+# Guacamole version to deploy
+guacamole_version: "latest"
+
+# Base directory for Guacamole files
+guacamole_base_dir: "/opt/guacamole"
+
+# System user to run Guacamole
+guacamole_user: "ubuntu"
+
+# Project name for tagging
+project_name: "cyberlab"
+
+# Let's Encrypt configuration (Prod only)
+# Set to true to enable Let's Encrypt SSL certificates
+enable_lets_encrypt: false
+
+# Domain name for Let's Encrypt certificate
+# Required when enable_lets_encrypt is true
+domain_name: ""
+
+# Email address for Let's Encrypt notifications
+# Defaults to admin@<domain_name> if not specified
+# letsencrypt_email: "admin@example.com"
