@@ -15,7 +15,7 @@
     dest: "{{ guacamole_base_dir }}/.env"
     owner: "{{ guacamole_user }}"
     group: "{{ guacamole_user }}"
-    mode: '0600'
+    mode: "0600"
   no_log: true
 
 - name: Initialize Guacamole database schema
@@ -41,7 +41,7 @@
     dest: "{{ guacamole_base_dir }}/docker-compose.yml"
     owner: "{{ guacamole_user }}"
     group: "{{ guacamole_user }}"
-    mode: '0644'
+    mode: "0644"
   notify: restart guacamole
 
 - name: Create Nginx configuration
@@ -50,7 +50,7 @@
     dest: "{{ guacamole_base_dir }}/nginx.conf"
     owner: "{{ guacamole_user }}"
     group: "{{ guacamole_user }}"
-    mode: '0644'
+    mode: "0644"
   notify: restart guacamole
 
 - name: Generate self-signed SSL certificate
@@ -67,7 +67,7 @@
 - name: Set permissions on SSL private key
   ansible.builtin.file:
     path: "{{ guacamole_base_dir }}/ssl/key.pem"
-    mode: '0600'
+    mode: "0600"
     owner: root
     group: root
   when: not enable_lets_encrypt or domain_name == ""
@@ -75,10 +75,99 @@
 - name: Set permissions on SSL certificate
   ansible.builtin.file:
     path: "{{ guacamole_base_dir }}/ssl/cert.pem"
-    mode: '0644'
+    mode: "0644"
     owner: root
     group: root
   when: not enable_lets_encrypt or domain_name == ""
+
+# ============================================================================
+# Let's Encrypt Certificate Obtainment (Prod only)
+# ============================================================================
+- name: Obtain initial Let's Encrypt certificate
+  when: enable_lets_encrypt | default(false) and domain_name | default("") != ""
+  block:
+    - name: Check if Let's Encrypt certificate already exists
+      ansible.builtin.stat:
+        path: "{{ guacamole_base_dir }}/certbot/conf/live/{{ domain_name }}/fullchain.pem"
+      register: letsencrypt_cert_stat
+
+    - name: Create certbot directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ guacamole_user }}"
+        group: "{{ guacamole_user }}"
+        mode: "0755"
+      loop:
+        - "{{ guacamole_base_dir }}/certbot"
+        - "{{ guacamole_base_dir }}/certbot/conf"
+        - "{{ guacamole_base_dir }}/certbot/www"
+      when: not letsencrypt_cert_stat.stat.exists
+
+    - name: Stop any existing nginx container (to free port 80)
+      community.docker.docker_container:
+        name: guacamole_nginx
+        state: absent
+      ignore_errors: true
+      when: not letsencrypt_cert_stat.stat.exists
+
+    - name: Pull certbot image
+      community.docker.docker_image:
+        name: certbot/certbot:latest
+        source: pull
+      when: not letsencrypt_cert_stat.stat.exists
+
+    - name: Obtain Let's Encrypt certificate using standalone mode
+      ansible.builtin.command:
+        cmd: >
+          docker run --rm
+          -v {{ guacamole_base_dir }}/certbot/conf:/etc/letsencrypt
+          -v {{ guacamole_base_dir }}/certbot/www:/var/www/certbot
+          -p 80:80
+          certbot/certbot certonly
+          --standalone
+          --email {{ letsencrypt_email | default('admin@' + domain_name) }}
+          --agree-tos
+          --no-eff-email
+          --non-interactive
+          -d {{ domain_name }}
+      register: certbot_result
+      when: not letsencrypt_cert_stat.stat.exists
+
+    - name: Display certbot result
+      ansible.builtin.debug:
+        msg: "Certbot output: {{ certbot_result.stdout_lines | default([]) }}"
+      when: certbot_result is changed
+
+    - name: Verify Let's Encrypt certificate was obtained
+      ansible.builtin.stat:
+        path: "{{ guacamole_base_dir }}/certbot/conf/live/{{ domain_name }}/fullchain.pem"
+      register: letsencrypt_cert_verify
+      when: certbot_result is changed
+
+    - name: Fail if certificate was not obtained
+      ansible.builtin.fail:
+        msg: |
+          Failed to obtain Let's Encrypt certificate for {{ domain_name }}.
+          Certbot stderr: {{ certbot_result.stderr | default('No error output') }}
+          Please ensure:
+          1. DNS A record for {{ domain_name }} points to this server's public IP
+          2. Port 80 is accessible from the internet
+          3. The domain is not rate-limited by Let's Encrypt
+      when:
+        - certbot_result is changed
+        - not letsencrypt_cert_verify.stat.exists
+
+    - name: Create symlinks for nginx to find certificates
+      ansible.builtin.file:
+        src: "{{ guacamole_base_dir }}/certbot/conf"
+        dest: "{{ guacamole_base_dir }}/letsencrypt"
+        state: link
+        owner: "{{ guacamole_user }}"
+        group: "{{ guacamole_user }}"
+      when: letsencrypt_cert_stat.stat.exists or (certbot_result is changed and letsencrypt_cert_verify.stat.exists)
+
+# ============================================================================
 
 - name: Pull Docker images
   community.docker.docker_image:
@@ -111,7 +200,7 @@
   ansible.builtin.template:
     src: guacamole.service.j2
     dest: /etc/systemd/system/guacamole.service
-    mode: '0644'
+    mode: "0644"
   notify: reload systemd
 
 - name: Enable and start Guacamole systemd service
@@ -137,7 +226,7 @@
   ansible.builtin.template:
     src: guacamole-info.txt.j2
     dest: /root/guacamole-info.txt
-    mode: '0644'
+    mode: "0644"
   register: info_file_result
 
 - name: Display deployment information
@@ -150,4 +239,3 @@
   ansible.builtin.debug:
     msg: "{{ info_file_content.stdout_lines }}"
   when: info_file_content.rc == 0
-
