@@ -74,10 +74,18 @@ jobs:
         run: ansible-galaxy collection install -r requirements.yml
 
       - name: Setup SSH key
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY_DEV }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY_DEV }}" > ~/.ssh/id_rsa
+          chmod 700 ~/.ssh
+          # Write SSH key preserving exact formatting
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          # Remove any Windows line endings and ensure proper format
+          sed -i 's/\r$//' ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          # Validate the key format
+          ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null 2>&1 || (echo "❌ Invalid SSH key format - please check the secret" && exit 1)
           eval $(ssh-agent -s)
           ssh-add ~/.ssh/id_rsa
 
@@ -196,10 +204,18 @@ jobs:
         run: ansible-galaxy collection install -r requirements.yml
 
       - name: Setup SSH key
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY_PROD }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY_PROD }}" > ~/.ssh/id_rsa
+          chmod 700 ~/.ssh
+          # Write SSH key preserving exact formatting
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          # Remove any Windows line endings and ensure proper format
+          sed -i 's/\r$//' ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          # Validate the key format
+          ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null 2>&1 || (echo "❌ Invalid SSH key format - please check the secret" && exit 1)
           eval $(ssh-agent -s)
           ssh-add ~/.ssh/id_rsa
 
