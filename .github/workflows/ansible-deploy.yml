@@ -128,12 +128,14 @@ jobs:
         if: github.event.inputs.check_mode == 'true'
         env:
           GUACAMOLE_DB_PASSWORD: ${{ secrets.GUACAMOLE_DB_PASSWORD }}
+          GUACAMOLE_ADMIN_USERNAME: ${{ vars.GUACAMOLE_ADMIN_USERNAME }}
           GUACAMOLE_ADMIN_PASSWORD: ${{ secrets.GUACAMOLE_ADMIN_PASSWORD }}
         run: |
           PLAYBOOK="${{ github.event.inputs.playbook || 'guacamole' }}"
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
+            -e "guacamole_admin_username=${GUACAMOLE_ADMIN_USERNAME:-cylab_admin}" \
             -e "guacamole_admin_password=${GUACAMOLE_ADMIN_PASSWORD:-guacadmin}" \
             -e "enable_lets_encrypt=${{ vars.TF_VAR_ENABLE_LETS_ENCRYPT }}" \
             -e "domain_name=${{ vars.TF_VAR_GUACAMOLE_DOMAIN_NAME }}" \
@@ -147,12 +149,14 @@ jobs:
         if: github.event.inputs.check_mode != 'true'
         env:
           GUACAMOLE_DB_PASSWORD: ${{ secrets.GUACAMOLE_DB_PASSWORD }}
+          GUACAMOLE_ADMIN_USERNAME: ${{ vars.GUACAMOLE_ADMIN_USERNAME }}
           GUACAMOLE_ADMIN_PASSWORD: ${{ secrets.GUACAMOLE_ADMIN_PASSWORD }}
         run: |
           PLAYBOOK="${{ github.event.inputs.playbook || 'guacamole' }}"
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
+            -e "guacamole_admin_username=${GUACAMOLE_ADMIN_USERNAME:-cylab_admin}" \
             -e "guacamole_admin_password=${GUACAMOLE_ADMIN_PASSWORD:-guacadmin}" \
             -e "enable_lets_encrypt=${{ vars.TF_VAR_ENABLE_LETS_ENCRYPT }}" \
             -e "domain_name=${{ vars.TF_VAR_GUACAMOLE_DOMAIN_NAME }}" \
@@ -281,6 +285,7 @@ jobs:
         if: github.event.inputs.check_mode == 'true'
         env:
           GUACAMOLE_DB_PASSWORD: ${{ secrets.PROD_GUACAMOLE_DB_PASSWORD }}
+          GUACAMOLE_ADMIN_USERNAME: ${{ vars.PROD_GUACAMOLE_ADMIN_USERNAME }}
           GUACAMOLE_ADMIN_PASSWORD: ${{ secrets.PROD_GUACAMOLE_ADMIN_PASSWORD }}
           DOMAIN_NAME: ${{ vars.TF_VAR_PROD_GUACAMOLE_DOMAIN_NAME }}
         run: |
@@ -292,6 +297,7 @@ jobs:
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
+            -e "guacamole_admin_username=${GUACAMOLE_ADMIN_USERNAME:-cylab_admin}" \
             -e "guacamole_admin_password=${GUACAMOLE_ADMIN_PASSWORD:-guacadmin}" \
             -e "enable_lets_encrypt=${ENABLE_SSL}" \
             -e "domain_name=${DOMAIN_NAME:-}" \
@@ -305,6 +311,7 @@ jobs:
         if: github.event.inputs.check_mode != 'true'
         env:
           GUACAMOLE_DB_PASSWORD: ${{ secrets.PROD_GUACAMOLE_DB_PASSWORD }}
+          GUACAMOLE_ADMIN_USERNAME: ${{ vars.PROD_GUACAMOLE_ADMIN_USERNAME }}
           GUACAMOLE_ADMIN_PASSWORD: ${{ secrets.PROD_GUACAMOLE_ADMIN_PASSWORD }}
           DOMAIN_NAME: ${{ vars.TF_VAR_PROD_GUACAMOLE_DOMAIN_NAME }}
         run: |
@@ -316,6 +323,7 @@ jobs:
           ansible-playbook playbooks/${PLAYBOOK}.yml \
             -i inventory/hosts.yml \
             -e "guacamole_db_password=${GUACAMOLE_DB_PASSWORD}" \
+            -e "guacamole_admin_username=${GUACAMOLE_ADMIN_USERNAME:-cylab_admin}" \
             -e "guacamole_admin_password=${GUACAMOLE_ADMIN_PASSWORD:-guacadmin}" \
             -e "enable_lets_encrypt=${ENABLE_SSL}" \
             -e "domain_name=${DOMAIN_NAME:-}" \

@@ -197,11 +197,18 @@
     state: started
 
 # ============================================================================
-# Update Guacamole Admin Password (if custom password provided)
+# Create Custom Guacamole Admin User (if custom credentials provided)
 # ============================================================================
-- name: Update Guacamole admin password
-  when: guacamole_admin_password is defined and guacamole_admin_password != "" and guacamole_admin_password != "guacadmin"
+- name: Setup custom Guacamole admin user
+  when: >
+    (guacamole_admin_username is defined and guacamole_admin_username != "" and guacamole_admin_username != "guacadmin") or
+    (guacamole_admin_password is defined and guacamole_admin_password != "" and guacamole_admin_password != "guacadmin")
   block:
+    - name: Set admin username
+      ansible.builtin.set_fact:
+        target_admin_username: "{{ guacamole_admin_username | default('cylab_admin') }}"
+        target_admin_password: "{{ guacamole_admin_password | default('guacadmin') }}"
+
     - name: Wait for Guacamole API to be available
       ansible.builtin.uri:
         url: "http://localhost:8080/guacamole/api/tokens"
@@ -216,7 +223,7 @@
       delay: 5
       until: guac_api_check.status in [200, 403]
 
-    - name: Authenticate with default credentials
+    - name: Authenticate with default guacadmin credentials
       ansible.builtin.uri:
         url: "http://localhost:8080/guacamole/api/tokens"
         method: POST
@@ -228,51 +235,98 @@
       register: guac_auth_default
       ignore_errors: true
 
-    - name: Get admin user details
+    - name: Check if custom admin user already exists
       ansible.builtin.uri:
-        url: "http://localhost:8080/guacamole/api/session/data/postgresql/users/guacadmin?token={{ guac_auth_default.json.authToken }}"
+        url: "http://localhost:8080/guacamole/api/session/data/postgresql/users/{{ target_admin_username }}?token={{ guac_auth_default.json.authToken }}"
         method: GET
-        return_content: yes
-      register: admin_user_details
+        status_code: [200, 404]
+      register: custom_admin_check
       when: guac_auth_default is succeeded
 
-    - name: Debug admin user details
-      ansible.builtin.debug:
-        msg: "Admin user details: {{ admin_user_details.json | default({}) }}"
-      when: guac_auth_default is succeeded and admin_user_details is succeeded
-
-    - name: Update admin password via API
+    - name: Create custom admin user
       ansible.builtin.uri:
-        url: "http://localhost:8080/guacamole/api/session/data/postgresql/users/guacadmin?token={{ guac_auth_default.json.authToken }}"
-        method: PUT
+        url: "http://localhost:8080/guacamole/api/session/data/postgresql/users?token={{ guac_auth_default.json.authToken }}"
+        method: POST
         body_format: json
-        body: "{{ admin_user_details.json | combine({'password': guacamole_admin_password}) }}"
-        status_code: [204]
-      register: password_update_result
-      when: guac_auth_default is succeeded and admin_user_details is succeeded
+        body:
+          username: "{{ target_admin_username }}"
+          password: "{{ target_admin_password }}"
+          attributes:
+            disabled: ""
+            expired: ""
+            access-window-start: ""
+            access-window-end: ""
+            valid-from: ""
+            valid-until: ""
+            timezone: ""
+            guac-full-name: "CyberLab Administrator"
+            guac-email-address: "{{ admin_email | default('') }}"
+            guac-organization: "{{ project_name | default('cyberlab') }}"
+            guac-organizational-role: "System Administrator"
+        status_code: [200, 201]
+      register: create_admin_result
+      when:
+        - guac_auth_default is succeeded
+        - custom_admin_check.status == 404
       no_log: true
 
-    - name: Verify new password works
+    - name: Grant admin permissions to custom user
+      ansible.builtin.uri:
+        url: "http://localhost:8080/guacamole/api/session/data/postgresql/users/{{ target_admin_username }}/permissions?token={{ guac_auth_default.json.authToken }}"
+        method: PATCH
+        body_format: json
+        body:
+          - op: "add"
+            path: "/systemPermissions"
+            value: "ADMINISTER"
+          - op: "add"
+            path: "/systemPermissions"
+            value: "CREATE_USER"
+          - op: "add"
+            path: "/systemPermissions"
+            value: "CREATE_USER_GROUP"
+          - op: "add"
+            path: "/systemPermissions"
+            value: "CREATE_CONNECTION"
+          - op: "add"
+            path: "/systemPermissions"
+            value: "CREATE_CONNECTION_GROUP"
+          - op: "add"
+            path: "/systemPermissions"
+            value: "CREATE_SHARING_PROFILE"
+        status_code: [204]
+      register: grant_permissions_result
+      when:
+        - guac_auth_default is succeeded
+        - custom_admin_check.status == 404
+        - create_admin_result is succeeded
+
+    - name: Verify custom admin can authenticate
       ansible.builtin.uri:
         url: "http://localhost:8080/guacamole/api/tokens"
         method: POST
         body_format: form-urlencoded
         body:
-          username: "guacadmin"
-          password: "{{ guacamole_admin_password }}"
+          username: "{{ target_admin_username }}"
+          password: "{{ target_admin_password }}"
         status_code: [200]
-      register: guac_auth_new
-      when: password_update_result is succeeded
+      register: custom_admin_auth
+      when: guac_auth_default is succeeded and (create_admin_result is succeeded or custom_admin_check.status == 200)
       no_log: true
 
-    - name: Admin password update status
+    - name: Custom admin user created successfully
       ansible.builtin.debug:
-        msg: "Guacamole admin password has been updated successfully"
-      when: guac_auth_new is succeeded
+        msg: "Custom admin user '{{ target_admin_username }}' has been created with full admin permissions"
+      when: create_admin_result is succeeded
 
-    - name: Skip password update if already changed
+    - name: Custom admin user already exists
       ansible.builtin.debug:
-        msg: "Guacamole admin password was already changed (default credentials failed). Skipping update."
+        msg: "Custom admin user '{{ target_admin_username }}' already exists. Skipping creation."
+      when: custom_admin_check.status == 200
+
+    - name: Skipping - default credentials no longer work
+      ansible.builtin.debug:
+        msg: "Default guacadmin credentials failed. Custom admin setup skipped (may already be configured)."
       when: guac_auth_default is failed
 
 # ============================================================================
