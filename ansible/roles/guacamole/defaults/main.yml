@@ -14,8 +14,9 @@ guacamole_user: "ubuntu"
 project_name: "cyberlab"
 
 # Guacamole admin credentials
-# If guacamole_admin_password is set to something other than "guacadmin",
-# the role will automatically update the admin password after deployment
+# If set, creates a NEW admin user (doesn't modify the built-in guacadmin)
+# This is more reliable as Guacamole can restrict modifications to guacadmin
+# guacamole_admin_username: "cylab_admin"
 # guacamole_admin_password: "your-secure-password"
 
 # Let's Encrypt configuration (Prod only)
