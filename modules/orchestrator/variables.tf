@@ -76,7 +76,6 @@ variable "guacamole_api_url" {
 variable "guacamole_admin_username" {
   description = "Guacamole admin username"
   type        = string
-  default     = "guacadmin"
   sensitive   = true
 }
 
@@ -91,13 +90,12 @@ variable "guacamole_admin_password" {
 variable "rdp_username" {
   description = "Default RDP username for AttackBox connections"
   type        = string
-  default     = "kali"
+ 
 }
 
 variable "rdp_password" {
   description = "Default RDP password for AttackBox connections"
   type        = string
-  default     = "kali"
   sensitive   = true
 }
 
@@ -105,13 +103,11 @@ variable "rdp_password" {
 variable "session_ttl_hours" {
   description = "Session TTL in hours before auto-cleanup"
   type        = number
-  default     = 4
 }
 
 variable "max_sessions_per_student" {
   description = "Maximum concurrent sessions per student"
   type        = number
-  default     = 1
 }
 
 variable "instance_warmup_timeout_seconds" {
@@ -157,7 +153,7 @@ variable "require_moodle_auth" {
 variable "log_retention_days" {
   description = "CloudWatch log retention in days"
   type        = number
-  default     = 30
+  default     = 7
 }
 
 variable "enable_xray_tracing" {
