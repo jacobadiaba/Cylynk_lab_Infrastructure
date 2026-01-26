@@ -42,8 +42,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    environment:
-      name: development
+    # Using repository-level secrets only (no environment)
     defaults:
       run:
         working-directory: ansible
@@ -182,8 +181,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    environment:
-      name: production
+    # Using repository-level secrets only (no environment)
     defaults:
       run:
         working-directory: ansible
