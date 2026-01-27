@@ -76,8 +76,8 @@ variable "pool_size" {
   description = "Desired number of AttackBox instances in pool"
   type        = number
   validation {
-    condition     = var.pool_size >= 1 && var.pool_size <= 100
-    error_message = "Pool size must be between 1 and 100."
+    condition     = var.pool_size >= 0 && var.pool_size <= 100
+    error_message = "Pool size must be between 0 and 100."
   }
 }
 
