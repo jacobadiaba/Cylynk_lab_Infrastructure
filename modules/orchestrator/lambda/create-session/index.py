@@ -120,6 +120,124 @@ def resolve_plan_info(token_payload: dict) -> tuple[str, int, list]:
     return plan, quota_minutes, roles
 
 
+def check_guacamole_connection_active(connection_id: str) -> bool:
+    """
+    Check if a user is actually connected to a Guacamole connection.
+    
+    This is used to detect stale sessions where the user logged out of
+    Guacamole but the session wasn't properly terminated.
+    
+    Args:
+        connection_id: The Guacamole connection identifier
+        
+    Returns:
+        True if there's an active connection, False otherwise
+    """
+    internal_url = get_guacamole_internal_url()
+    if not internal_url or not connection_id:
+        return False
+    
+    try:
+        guac = GuacamoleClient(
+            base_url=internal_url,
+            username=GUACAMOLE_ADMIN_USER,
+            password=GUACAMOLE_ADMIN_PASS,
+            timeout=3,  # Short timeout to avoid blocking
+        )
+        
+        activity = guac.get_connection_activity(connection_id)
+        if activity and activity.get("active", False):
+            return True
+        return False
+        
+    except Exception as e:
+        logger.warning(f"Could not check Guacamole connection activity: {e}")
+        # On error, assume NOT connected to allow session recreation
+        # This is safer than blocking users from creating new sessions
+        return False
+
+
+def cleanup_stale_session(
+    session: dict,
+    sessions_db: DynamoDBClient,
+    pool_db: DynamoDBClient,
+    reason: str = "stale_reconnect"
+) -> None:
+    """
+    Clean up a stale session that the user is no longer connected to.
+    
+    This handles the case where a user logged out of Guacamole without
+    properly ending their session via the API.
+    
+    Args:
+        session: The session record to clean up
+        sessions_db: DynamoDB client for sessions table
+        pool_db: DynamoDB client for instance pool table
+        reason: The termination reason to record
+    """
+    session_id = session["session_id"]
+    instance_id = session.get("instance_id")
+    connection_info = session.get("connection_info", {})
+    now = get_current_timestamp()
+    
+    logger.info(f"Cleaning up stale session {session_id} (reason: {reason})")
+    
+    # Update session status to terminated
+    sessions_db.update_item(
+        {"session_id": session_id},
+        {
+            "status": SessionStatus.TERMINATED,
+            "termination_reason": reason,
+            "terminated_at": now,
+            "updated_at": now,
+        }
+    )
+    
+    # Release the instance back to the pool if assigned
+    if instance_id:
+        pool_db.update_item(
+            {"instance_id": instance_id},
+            {
+                "status": InstanceStatus.AVAILABLE,
+                "session_id": None,
+                "student_id": None,
+                "released_at": now,
+            }
+        )
+        logger.info(f"Released instance {instance_id} back to pool")
+    
+    # Clean up Guacamole resources (best effort)
+    guac_connection_id = connection_info.get("guacamole_connection_id")
+    guac_session_user = connection_info.get("guacamole_session_user")
+    
+    if guac_connection_id or guac_session_user:
+        internal_url = get_guacamole_internal_url()
+        if internal_url:
+            try:
+                guac = GuacamoleClient(
+                    base_url=internal_url,
+                    username=GUACAMOLE_ADMIN_USER,
+                    password=GUACAMOLE_ADMIN_PASS,
+                    timeout=3,
+                )
+                
+                # Delete the connection
+                if guac_connection_id:
+                    if guac.delete_connection(guac_connection_id):
+                        logger.info(f"Deleted Guacamole connection {guac_connection_id}")
+                
+                # Delete the session user
+                if guac_session_user:
+                    if guac.delete_user(guac_session_user):
+                        logger.info(f"Deleted Guacamole user {guac_session_user}")
+                        
+            except Exception as e:
+                # Best effort - don't fail if Guacamole cleanup fails
+                logger.warning(f"Guacamole cleanup failed (non-blocking): {e}")
+    
+    logger.info(f"Stale session {session_id} cleaned up successfully")
+
+
 def create_guacamole_connection(
     session_id: str,
     student_id: str,
@@ -320,20 +438,56 @@ def handler(event, context):
         ]
         
         if len(active_sessions) >= MAX_SESSIONS:
-            # Return existing session info
             session = active_sessions[0]
-            return success_response(
-                {
-                    "session_id": session["session_id"],
-                    "status": session["status"],
-                    "instance_id": session.get("instance_id"),
-                    "connection_info": session.get("connection_info", {}),
-                    "created_at": session.get("created_at"),
-                    "expires_at": session.get("expires_at"),
-                    "reused": True,
-                },
-                "Existing session found"
-            )
+            connection_info = session.get("connection_info", {})
+            guac_connection_id = connection_info.get("guacamole_connection_id")
+            
+            # Check if the user is actually connected to Guacamole
+            # If they logged out via Guacamole's logout button, the session
+            # will appear "active" in DynamoDB but they won't be connected
+            is_actually_connected = False
+            
+            if guac_connection_id:
+                is_actually_connected = check_guacamole_connection_active(guac_connection_id)
+                logger.info(f"Existing session {session['session_id']}: Guacamole connected = {is_actually_connected}")
+            else:
+                # No Guacamole connection ID - might be in PENDING/PROVISIONING state
+                # These are still valid sessions that haven't finished setup yet
+                if session.get("status") in [SessionStatus.PENDING, SessionStatus.PROVISIONING]:
+                    logger.info(f"Existing session {session['session_id']} is still provisioning, returning it")
+                    return success_response(
+                        {
+                            "session_id": session["session_id"],
+                            "status": session["status"],
+                            "instance_id": session.get("instance_id"),
+                            "connection_info": connection_info,
+                            "created_at": session.get("created_at"),
+                            "expires_at": session.get("expires_at"),
+                            "reused": True,
+                        },
+                        "Existing session found (provisioning)"
+                    )
+            
+            if is_actually_connected:
+                # User IS connected - return existing session as before
+                logger.info(f"User is connected to session {session['session_id']}, returning existing session")
+                return success_response(
+                    {
+                        "session_id": session["session_id"],
+                        "status": session["status"],
+                        "instance_id": session.get("instance_id"),
+                        "connection_info": connection_info,
+                        "created_at": session.get("created_at"),
+                        "expires_at": session.get("expires_at"),
+                        "reused": True,
+                    },
+                    "Existing session found"
+                )
+            else:
+                # User is NOT connected - session is stale (user logged out of Guacamole)
+                # Clean up the stale session and continue to create a new one
+                logger.info(f"Session {session['session_id']} is stale (user not connected to Guacamole), cleaning up")
+                cleanup_stale_session(session, sessions_db, pool_db, reason="stale_guacamole_logout")
         
         # Generate new session
         session_id = generate_session_id()
