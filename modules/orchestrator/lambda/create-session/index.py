@@ -133,8 +133,11 @@ def check_guacamole_connection_active(connection_id: str) -> bool:
     Returns:
         True if there's an active connection, False otherwise
     """
+    logger.info(f"[STALE_SESSION_CHECK] Checking Guacamole connection activity for connection_id={connection_id}")
+    
     internal_url = get_guacamole_internal_url()
     if not internal_url or not connection_id:
+        logger.info(f"[STALE_SESSION_CHECK] No Guacamole URL or connection_id, returning False")
         return False
     
     try:
@@ -146,12 +149,17 @@ def check_guacamole_connection_active(connection_id: str) -> bool:
         )
         
         activity = guac.get_connection_activity(connection_id)
+        logger.info(f"[STALE_SESSION_CHECK] Guacamole activity response: {activity}")
+        
         if activity and activity.get("active", False):
+            logger.info(f"[STALE_SESSION_CHECK] User IS actively connected to Guacamole")
             return True
+        
+        logger.info(f"[STALE_SESSION_CHECK] User is NOT connected to Guacamole (stale session detected)")
         return False
         
     except Exception as e:
-        logger.warning(f"Could not check Guacamole connection activity: {e}")
+        logger.warning(f"[STALE_SESSION_CHECK] Error checking Guacamole activity: {e} - assuming NOT connected")
         # On error, assume NOT connected to allow session recreation
         # This is safer than blocking users from creating new sessions
         return False
@@ -176,13 +184,20 @@ def cleanup_stale_session(
         reason: The termination reason to record
     """
     session_id = session["session_id"]
+    student_id = session.get("student_id")
     instance_id = session.get("instance_id")
     connection_info = session.get("connection_info", {})
     now = get_current_timestamp()
     
-    logger.info(f"Cleaning up stale session {session_id} (reason: {reason})")
+    logger.info(f"[STALE_SESSION_CLEANUP] ========== STARTING STALE SESSION CLEANUP ==========")
+    logger.info(f"[STALE_SESSION_CLEANUP] Session ID: {session_id}")
+    logger.info(f"[STALE_SESSION_CLEANUP] Student ID: {student_id}")
+    logger.info(f"[STALE_SESSION_CLEANUP] Instance ID: {instance_id}")
+    logger.info(f"[STALE_SESSION_CLEANUP] Reason: {reason}")
+    logger.info(f"[STALE_SESSION_CLEANUP] Previous status: {session.get('status')}")
     
     # Update session status to terminated
+    logger.info(f"[STALE_SESSION_CLEANUP] Marking session as TERMINATED in DynamoDB...")
     sessions_db.update_item(
         {"session_id": session_id},
         {
@@ -192,9 +207,11 @@ def cleanup_stale_session(
             "updated_at": now,
         }
     )
+    logger.info(f"[STALE_SESSION_CLEANUP] Session marked as TERMINATED successfully")
     
     # Release the instance back to the pool if assigned
     if instance_id:
+        logger.info(f"[STALE_SESSION_CLEANUP] Releasing instance {instance_id} back to pool...")
         pool_db.update_item(
             {"instance_id": instance_id},
             {
@@ -204,11 +221,16 @@ def cleanup_stale_session(
                 "released_at": now,
             }
         )
-        logger.info(f"Released instance {instance_id} back to pool")
+        logger.info(f"[STALE_SESSION_CLEANUP] Instance {instance_id} released to pool (status=AVAILABLE)")
+    else:
+        logger.info(f"[STALE_SESSION_CLEANUP] No instance to release")
     
     # Clean up Guacamole resources (best effort)
     guac_connection_id = connection_info.get("guacamole_connection_id")
     guac_session_user = connection_info.get("guacamole_session_user")
+    
+    logger.info(f"[STALE_SESSION_CLEANUP] Guacamole connection ID: {guac_connection_id}")
+    logger.info(f"[STALE_SESSION_CLEANUP] Guacamole session user: {guac_session_user}")
     
     if guac_connection_id or guac_session_user:
         internal_url = get_guacamole_internal_url()
@@ -223,19 +245,28 @@ def cleanup_stale_session(
                 
                 # Delete the connection
                 if guac_connection_id:
+                    logger.info(f"[STALE_SESSION_CLEANUP] Deleting Guacamole connection {guac_connection_id}...")
                     if guac.delete_connection(guac_connection_id):
-                        logger.info(f"Deleted Guacamole connection {guac_connection_id}")
+                        logger.info(f"[STALE_SESSION_CLEANUP] Guacamole connection {guac_connection_id} deleted successfully")
+                    else:
+                        logger.warning(f"[STALE_SESSION_CLEANUP] Failed to delete Guacamole connection {guac_connection_id}")
                 
                 # Delete the session user
                 if guac_session_user:
+                    logger.info(f"[STALE_SESSION_CLEANUP] Deleting Guacamole user {guac_session_user}...")
                     if guac.delete_user(guac_session_user):
-                        logger.info(f"Deleted Guacamole user {guac_session_user}")
+                        logger.info(f"[STALE_SESSION_CLEANUP] Guacamole user {guac_session_user} deleted successfully")
+                    else:
+                        logger.warning(f"[STALE_SESSION_CLEANUP] Failed to delete Guacamole user {guac_session_user}")
                         
             except Exception as e:
                 # Best effort - don't fail if Guacamole cleanup fails
-                logger.warning(f"Guacamole cleanup failed (non-blocking): {e}")
+                logger.warning(f"[STALE_SESSION_CLEANUP] Guacamole cleanup failed (non-blocking): {e}")
+    else:
+        logger.info(f"[STALE_SESSION_CLEANUP] No Guacamole resources to clean up")
     
-    logger.info(f"Stale session {session_id} cleaned up successfully")
+    logger.info(f"[STALE_SESSION_CLEANUP] ========== STALE SESSION CLEANUP COMPLETE ==========")
+    logger.info(f"[STALE_SESSION_CLEANUP] User {student_id} can now create a new session")
 
 
 def create_guacamole_connection(
@@ -442,6 +473,13 @@ def handler(event, context):
             connection_info = session.get("connection_info", {})
             guac_connection_id = connection_info.get("guacamole_connection_id")
             
+            logger.info(f"[STALE_SESSION_CHECK] ========== EXISTING SESSION FOUND ==========")
+            logger.info(f"[STALE_SESSION_CHECK] User {student_id} already has {len(active_sessions)} active session(s)")
+            logger.info(f"[STALE_SESSION_CHECK] Existing session ID: {session['session_id']}")
+            logger.info(f"[STALE_SESSION_CHECK] Existing session status: {session.get('status')}")
+            logger.info(f"[STALE_SESSION_CHECK] Guacamole connection ID: {guac_connection_id}")
+            logger.info(f"[STALE_SESSION_CHECK] Checking if user is actually connected to Guacamole...")
+            
             # Check if the user is actually connected to Guacamole
             # If they logged out via Guacamole's logout button, the session
             # will appear "active" in DynamoDB but they won't be connected
@@ -449,12 +487,13 @@ def handler(event, context):
             
             if guac_connection_id:
                 is_actually_connected = check_guacamole_connection_active(guac_connection_id)
-                logger.info(f"Existing session {session['session_id']}: Guacamole connected = {is_actually_connected}")
+                logger.info(f"[STALE_SESSION_CHECK] Guacamole connection check result: connected={is_actually_connected}")
             else:
                 # No Guacamole connection ID - might be in PENDING/PROVISIONING state
                 # These are still valid sessions that haven't finished setup yet
                 if session.get("status") in [SessionStatus.PENDING, SessionStatus.PROVISIONING]:
-                    logger.info(f"Existing session {session['session_id']} is still provisioning, returning it")
+                    logger.info(f"[STALE_SESSION_CHECK] Session is still provisioning (no Guacamole connection yet)")
+                    logger.info(f"[STALE_SESSION_CHECK] Returning existing provisioning session")
                     return success_response(
                         {
                             "session_id": session["session_id"],
@@ -467,10 +506,13 @@ def handler(event, context):
                         },
                         "Existing session found (provisioning)"
                     )
+                else:
+                    logger.info(f"[STALE_SESSION_CHECK] No Guacamole connection ID but session is {session.get('status')}")
             
             if is_actually_connected:
                 # User IS connected - return existing session as before
-                logger.info(f"User is connected to session {session['session_id']}, returning existing session")
+                logger.info(f"[STALE_SESSION_CHECK] ===== USER IS ACTIVELY CONNECTED =====")
+                logger.info(f"[STALE_SESSION_CHECK] Returning existing session (user is using it)")
                 return success_response(
                     {
                         "session_id": session["session_id"],
@@ -486,8 +528,11 @@ def handler(event, context):
             else:
                 # User is NOT connected - session is stale (user logged out of Guacamole)
                 # Clean up the stale session and continue to create a new one
-                logger.info(f"Session {session['session_id']} is stale (user not connected to Guacamole), cleaning up")
+                logger.info(f"[STALE_SESSION_CHECK] ===== STALE SESSION DETECTED =====")
+                logger.info(f"[STALE_SESSION_CHECK] User logged out of Guacamole but session was not terminated")
+                logger.info(f"[STALE_SESSION_CHECK] Auto-terminating stale session and creating a new one...")
                 cleanup_stale_session(session, sessions_db, pool_db, reason="stale_guacamole_logout")
+                logger.info(f"[STALE_SESSION_CHECK] Proceeding to create new session for user {student_id}")
         
         # Generate new session
         session_id = generate_session_id()
