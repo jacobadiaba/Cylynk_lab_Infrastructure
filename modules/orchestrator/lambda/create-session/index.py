@@ -120,20 +120,27 @@ def resolve_plan_info(token_payload: dict) -> tuple[str, int, list]:
     return plan, quota_minutes, roles
 
 
-def check_guacamole_connection_active(connection_id: str) -> bool:
+def check_guacamole_session_valid(connection_id: str, session_user: str = None, session_id: str = None, student_id: str = None) -> bool:
     """
-    Check if a user is actually connected to a Guacamole connection.
+    Check if a Guacamole session is still valid and usable.
+    
+    This checks both:
+    1. If there are active connections to the Guacamole connection
+    2. If the session user still exists and can authenticate (if provided)
     
     This is used to detect stale sessions where the user logged out of
     Guacamole but the session wasn't properly terminated.
     
     Args:
         connection_id: The Guacamole connection identifier
+        session_user: Optional session username to verify authentication
+        session_id: Optional session ID (needed to verify session user password)
+        student_id: Optional student ID (needed to verify session user password)
         
     Returns:
-        True if there's an active connection, False otherwise
+        True if the session is valid and usable, False otherwise
     """
-    logger.info(f"[STALE_SESSION_CHECK] Checking Guacamole connection activity for connection_id={connection_id}")
+    logger.info(f"[STALE_SESSION_CHECK] Checking Guacamole session validity for connection_id={connection_id}, session_user={session_user}")
     
     internal_url = get_guacamole_internal_url()
     if not internal_url or not connection_id:
@@ -148,19 +155,59 @@ def check_guacamole_connection_active(connection_id: str) -> bool:
             timeout=3,  # Short timeout to avoid blocking
         )
         
+        # Check if there are active connections
         activity = guac.get_connection_activity(connection_id)
         logger.info(f"[STALE_SESSION_CHECK] Guacamole activity response: {activity}")
         
-        if activity and activity.get("active", False):
-            logger.info(f"[STALE_SESSION_CHECK] User IS actively connected to Guacamole")
-            return True
+        has_active_connection = activity and activity.get("active", False)
         
-        logger.info(f"[STALE_SESSION_CHECK] User is NOT connected to Guacamole (stale session detected)")
-        return False
+        # If session user is provided, verify it can still authenticate
+        # This catches cases where user logged out and session user was deleted
+        session_user_valid = True
+        if session_user and session_id and student_id:
+            try:
+                # Generate the expected password using the same algorithm as create_session_user_and_get_url
+                import hashlib
+                expected_password = hashlib.sha256(f"{session_id}:{student_id}:secret".encode()).hexdigest()[:16]
+                
+                # Try to authenticate as the session user
+                # If this fails, the user was deleted (logged out) and session is stale
+                logger.info(f"[STALE_SESSION_CHECK] Verifying session user {session_user} can still authenticate...")
+                user_token = guac.authenticate_user(session_user, expected_password)
+                
+                if not user_token:
+                    logger.info(f"[STALE_SESSION_CHECK] Session user {session_user} CANNOT authenticate - user was deleted or logged out")
+                    session_user_valid = False
+                else:
+                    logger.info(f"[STALE_SESSION_CHECK] Session user {session_user} CAN authenticate - user still exists")
+            except Exception as e:
+                logger.warning(f"[STALE_SESSION_CHECK] Error verifying session user authentication: {e} - assuming invalid")
+                session_user_valid = False
+        elif session_user:
+            # We have session_user but not session_id/student_id - can't verify password
+            # If there's no active connection, assume stale
+            if not has_active_connection:
+                logger.info(f"[STALE_SESSION_CHECK] No active connection and cannot verify session user - assuming stale")
+                session_user_valid = False
+        
+        # Session is valid only if:
+        # 1. There's an active connection, AND
+        # 2. If session_user provided, it should be valid (or we don't have one to check)
+        is_valid = has_active_connection and session_user_valid
+        
+        if is_valid:
+            logger.info(f"[STALE_SESSION_CHECK] Session IS valid - user is actively connected and session user is valid")
+        else:
+            if not has_active_connection:
+                logger.info(f"[STALE_SESSION_CHECK] Session is STALE - no active connection found")
+            elif not session_user_valid:
+                logger.info(f"[STALE_SESSION_CHECK] Session is STALE - session user invalid or cannot authenticate (user logged out)")
+        
+        return is_valid
         
     except Exception as e:
-        logger.warning(f"[STALE_SESSION_CHECK] Error checking Guacamole activity: {e} - assuming NOT connected")
-        # On error, assume NOT connected to allow session recreation
+        logger.warning(f"[STALE_SESSION_CHECK] Error checking Guacamole session validity: {e} - assuming NOT valid")
+        # On error, assume NOT valid to allow session recreation
         # This is safer than blocking users from creating new sessions
         return False
 
@@ -581,14 +628,21 @@ def handler(event, context):
             logger.info(f"[STALE_SESSION_CHECK] Guacamole connection ID: {guac_connection_id}")
             logger.info(f"[STALE_SESSION_CHECK] Checking if user is actually connected to Guacamole...")
             
-            # Check if the user is actually connected to Guacamole
+            # Check if the user is actually connected to Guacamole and session is valid
             # If they logged out via Guacamole's logout button, the session
             # will appear "active" in DynamoDB but they won't be connected
-            is_actually_connected = False
+            # OR the session user might have been deleted
+            is_session_valid = False
             
             if guac_connection_id:
-                is_actually_connected = check_guacamole_connection_active(guac_connection_id)
-                logger.info(f"[STALE_SESSION_CHECK] Guacamole connection check result: connected={is_actually_connected}")
+                guac_session_user = connection_info.get("guacamole_session_user")
+                is_session_valid = check_guacamole_session_valid(
+                    connection_id=guac_connection_id,
+                    session_user=guac_session_user,
+                    session_id=session.get("session_id"),
+                    student_id=session.get("student_id", student_id)
+                )
+                logger.info(f"[STALE_SESSION_CHECK] Guacamole session validity check result: valid={is_session_valid}")
             else:
                 # No Guacamole connection ID - might be in PENDING/PROVISIONING state
                 # These are still valid sessions that haven't finished setup yet
@@ -610,7 +664,7 @@ def handler(event, context):
                 else:
                     logger.info(f"[STALE_SESSION_CHECK] No Guacamole connection ID but session is {session.get('status')}")
             
-            if is_actually_connected:
+            if is_session_valid:
                 # User appears connected, but their Guacamole auth token might be invalid
                 # (e.g., they logged out via Guacamole UI but the tunnel is still active)
                 # Regenerate the session user and URL to ensure they can connect
@@ -668,10 +722,10 @@ def handler(event, context):
                     "Existing session found"
                 )
             else:
-                # User is NOT connected - session is stale (user logged out of Guacamole)
+                # Session is NOT valid - user logged out of Guacamole or session user was deleted
                 # Clean up the stale session and continue to create a new one
                 logger.info(f"[STALE_SESSION_CHECK] ===== STALE SESSION DETECTED =====")
-                logger.info(f"[STALE_SESSION_CHECK] User logged out of Guacamole but session was not terminated")
+                logger.info(f"[STALE_SESSION_CHECK] User logged out of Guacamole or session user was deleted")
                 logger.info(f"[STALE_SESSION_CHECK] Auto-terminating stale session and creating a new one...")
                 cleanup_stale_session(session, sessions_db, pool_db, reason="stale_guacamole_logout")
                 logger.info(f"[STALE_SESSION_CHECK] Proceeding to create new session for user {student_id}")
