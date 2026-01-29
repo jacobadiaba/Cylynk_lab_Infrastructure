@@ -679,8 +679,9 @@ def handler(event, context):
                 # Longer delay to ensure Guacamole cleanup completes before creating new connection
                 # This prevents "disconnected" errors when reusing the same instance
                 # Guacamole needs time to fully clean up connections and reset internal state
+                # Windows RDP also needs time to reset after session ends
                 import time
-                time.sleep(2.0)
+                time.sleep(5.0)  # Increased delay for Windows RDP reset
                 logger.info(f"[STALE_SESSION_CHECK] Delay complete, creating new session")
         
         # Generate new session
@@ -770,14 +771,22 @@ def handler(event, context):
                         
                         # Check if instance was recently released (Windows RDP needs time to reset)
                         released_at = pool_record.get("released_at", 0)
+                        if released_at:
+                            # Convert Decimal to int if needed (DynamoDB returns Decimal)
+                            try:
+                                released_at = int(float(released_at))
+                            except (ValueError, TypeError):
+                                released_at = 0
+                        
                         if released_at > 0:
                             seconds_since_release = now - released_at
-                            if seconds_since_release < 15:
+                            if seconds_since_release < 20:
                                 # Instance was released recently - Windows RDP needs time to reset
-                                extra_delay = 15 - seconds_since_release
-                                logger.info(f"Instance {instance_id} was released {seconds_since_release}s ago, adding {extra_delay}s delay for RDP reset")
+                                # Windows keeps RDP sessions in "disconnected" state for a while
+                                extra_delay = 20 - seconds_since_release
+                                logger.info(f"Instance {instance_id} was released {seconds_since_release}s ago, adding {int(extra_delay)}s delay for Windows RDP reset")
                                 import time
-                                time.sleep(extra_delay)
+                                time.sleep(int(extra_delay))
                         
                         # Tag the instance
                         ec2_client.tag_instance(instance_id, {
@@ -975,10 +984,10 @@ def handler(event, context):
                 # Add delay after creating Guacamole connection to ensure it's fully initialized
                 # This prevents "disconnected" errors when the URL is opened immediately
                 # Windows RDP needs time to reset after previous sessions, especially if instance
-                # was recently released
+                # was recently released. Windows keeps disconnected sessions active for ~30 seconds.
                 import time
-                logger.info(f"Waiting for Guacamole connection and RDP service to initialize before returning URL...")
-                time.sleep(3.0)  # Increased delay for Windows RDP reset
+                logger.info(f"Waiting for Guacamole connection and Windows RDP service to initialize before returning URL...")
+                time.sleep(5.0)  # Increased delay for Windows RDP reset (was 3.0s)
                 logger.info(f"Guacamole connection initialization delay complete")
             
             # Update session as ready
