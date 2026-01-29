@@ -1210,10 +1210,13 @@ class GuacamoleClient:
             self.delete_user(username)
             return None
         
-        # Small delay to ensure Guacamole propagates user/permission changes
+        # Delay to ensure Guacamole propagates user/permission changes
         # This prevents "disconnected" errors when the URL is opened immediately
+        # Guacamole needs time to fully initialize the user, permissions, and connection state
         import time
-        time.sleep(0.5)
+        logger.info(f"Waiting for Guacamole user/permission propagation...")
+        time.sleep(1.0)
+        logger.info(f"Guacamole user/permission propagation delay complete")
         
         # Authenticate as the new user and get their token
         user_token = self.authenticate_user(username, password)
@@ -1221,19 +1224,6 @@ class GuacamoleClient:
             logger.error(f"Failed to authenticate as session user {username}")
             self.delete_user(username)
             return None
-        
-        # Verify the connection exists and is accessible before returning URL
-        # This helps catch issues early
-        try:
-            connections = self.get_connections()
-            connection_exists = any(
-                str(conn.get("identifier")) == str(connection_id) 
-                for conn in connections or []
-            )
-            if not connection_exists:
-                logger.warning(f"Connection {connection_id} not found after creation, but continuing anyway")
-        except Exception as e:
-            logger.warning(f"Could not verify connection exists: {e}, but continuing anyway")
         
         # Generate the URL with the user's token
         # IMPORTANT: Token must be BEFORE the # fragment to be sent to the server!

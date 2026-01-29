@@ -269,7 +269,7 @@ def cleanup_stale_session(
     logger.info(f"[STALE_SESSION_CLEANUP] User {student_id} can now create a new session")
 
 
-def regenerate_guacamole_session_access(
+git adddef regenerate_guacamole_session_access(
     session_id: str,
     student_id: str,
     connection_id: str,
@@ -676,10 +676,11 @@ def handler(event, context):
                 cleanup_stale_session(session, sessions_db, pool_db, reason="stale_guacamole_logout")
                 logger.info(f"[STALE_SESSION_CHECK] Proceeding to create new session for user {student_id}")
                 
-                # Small delay to ensure Guacamole cleanup completes before creating new connection
+                # Longer delay to ensure Guacamole cleanup completes before creating new connection
                 # This prevents "disconnected" errors when reusing the same instance
+                # Guacamole needs time to fully clean up connections and reset internal state
                 import time
-                time.sleep(1.0)
+                time.sleep(2.0)
                 logger.info(f"[STALE_SESSION_CHECK] Delay complete, creating new session")
         
         # Generate new session
@@ -959,6 +960,13 @@ def handler(event, context):
                 connection_info.update(guac_result)
                 # The direct URL to the RDP session
                 connection_info["direct_url"] = guac_result.get("guacamole_connection_url")
+                
+                # Add delay after creating Guacamole connection to ensure it's fully initialized
+                # This prevents "disconnected" errors when the URL is opened immediately
+                import time
+                logger.info(f"Waiting for Guacamole connection to initialize before returning URL...")
+                time.sleep(1.5)
+                logger.info(f"Guacamole connection initialization delay complete")
             
             # Update session as ready
             sessions_db.update_item(
