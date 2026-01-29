@@ -35,7 +35,7 @@ output "guacamole_private_ip" {
 
 output "guacamole_url" {
   description = "Guacamole web interface URL"
-  value       = var.guacamole_domain_name != "" ? "https://${var.guacamole_domain_name}/guacamole" : "https://${module.guacamole.public_ip}/guacamole"
+  value       = var.guacamole_domain_name != "" ? "https://${var.guacamole_domain_name}" : "https://${module.guacamole.public_ip}"
 }
 
 # =============================================================================
@@ -96,7 +96,7 @@ output "moodle_integration_info" {
     get_session         = "GET ${module.orchestrator.get_session_endpoint}/{sessionId}"
     terminate_session   = "DELETE ${module.orchestrator.terminate_session_endpoint}/{sessionId}"
     get_student_sessions = "GET ${module.orchestrator.student_sessions_endpoint}/{studentId}/sessions"
-    guacamole_url       = var.guacamole_domain_name != "" ? "https://${var.guacamole_domain_name}/guacamole" : "https://${module.guacamole.public_ip}/guacamole"
+    guacamole_url       = var.guacamole_domain_name != "" ? "https://${var.guacamole_domain_name}" : "https://${module.guacamole.public_ip}"
   }
 }
 

@@ -77,15 +77,16 @@ def get_asg_for_plan(plan: str) -> str:
 
 
 def get_guacamole_public_url() -> str:
-    """Get the public-facing Guacamole URL for students."""
+    """Get the public-facing Guacamole URL for students (no /guacamole path)."""
     if GUACAMOLE_API_URL:
-        return GUACAMOLE_API_URL
+        # Strip /guacamole from the end if present for public-facing URL
+        return GUACAMOLE_API_URL.rstrip("/").removesuffix("/guacamole")
     if GUACAMOLE_PUBLIC_IP:
-        return f"https://{GUACAMOLE_PUBLIC_IP}/guacamole"
+        return f"https://{GUACAMOLE_PUBLIC_IP}"
     if GUACAMOLE_PRIVATE_IP:
         # Fallback to private IP (won't work for external access)
         logger.warning("Using private IP for Guacamole URL - external access won't work!")
-        return f"https://{GUACAMOLE_PRIVATE_IP}/guacamole"
+        return f"https://{GUACAMOLE_PRIVATE_IP}"
     return ""
 
 
