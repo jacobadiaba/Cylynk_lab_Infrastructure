@@ -553,11 +553,21 @@ def handler(event, context):
             "StudentIndex", "student_id", student_id
         )
         
+        logger.info(f"[STALE_SESSION_CHECK] Checking for existing sessions for student_id={student_id}")
+        logger.info(f"[STALE_SESSION_CHECK] Found {len(existing_sessions)} total session(s) in database")
+        
+        # Log all session statuses for debugging
+        for idx, sess in enumerate(existing_sessions):
+            logger.info(f"[STALE_SESSION_CHECK] Session {idx+1}: id={sess.get('session_id')}, status={sess.get('status')}, created_at={sess.get('created_at')}")
+        
         active_sessions = [
             s for s in existing_sessions
             if s.get("status") in [SessionStatus.PENDING, SessionStatus.PROVISIONING, 
                                     SessionStatus.READY, SessionStatus.ACTIVE]
         ]
+        
+        logger.info(f"[STALE_SESSION_CHECK] Found {len(active_sessions)} active session(s) (status in [PENDING, PROVISIONING, READY, ACTIVE])")
+        logger.info(f"[STALE_SESSION_CHECK] MAX_SESSIONS={MAX_SESSIONS}, will check if {len(active_sessions)} >= {MAX_SESSIONS}")
         
         if len(active_sessions) >= MAX_SESSIONS:
             session = active_sessions[0]
