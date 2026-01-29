@@ -1,0 +1,401 @@
+/**
+ * CyberLab AttackBox - Custom Branding Styles
+ * Hides all Apache Guacamole branding and applies cyberpunk theme
+ */
+
+/* ===== HIDE GUACAMOLE BRANDING ===== */
+
+/* Hide Apache Guacamole logo and replace with custom */
+.login-ui .logo {
+  background-image: url("app/ext/cyberlab-branding/images/logo.png") !important;
+  background-size: contain !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  width: 200px !important;
+  height: 80px !important;
+}
+
+/* Hide "Apache Guacamole" title text */
+.login-ui .logo::before,
+.login-ui .logo::after {
+  display: none !important;
+}
+
+/* Hide version info everywhere */
+.login-ui .version,
+.version-dialog,
+.about-dialog,
+.about-version {
+  display: none !important;
+}
+
+/* Hide license/credits links */
+.login-ui .license,
+.login-ui a[href*="apache"],
+.login-ui a[href*="guacamole"],
+a[href*="LICENSE"],
+.credits,
+.about-credits {
+  display: none !important;
+}
+
+/* Hide "Powered by" or footer text */
+.login-ui footer,
+.login-ui .footer,
+.powered-by {
+  display: none !important;
+}
+
+/* Hide Guacamole text in navigation/menus */
+.guac-menu .header-title,
+.header .guac-title,
+.navbar-brand .guacamole-text {
+  visibility: hidden !important;
+}
+
+/* ===== CUSTOM THEME (CYBERPUNK) ===== */
+
+/* Root color variables */
+:root {
+  --cyberlab-primary: #00ff88;
+  --cyberlab-secondary: #00d4ff;
+  --cyberlab-bg-dark: #0a0a0a;
+  --cyberlab-bg-medium: #1a1a2e;
+  --cyberlab-bg-light: #16213e;
+  --cyberlab-text: #e0e0e0;
+  --cyberlab-text-muted: #a0a0a0;
+  --cyberlab-border: #333;
+  --cyberlab-glow: rgba(0, 255, 136, 0.3);
+}
+
+/* Login page background */
+.login-ui {
+  background: linear-gradient(
+    135deg,
+    var(--cyberlab-bg-dark) 0%,
+    var(--cyberlab-bg-medium) 50%,
+    var(--cyberlab-bg-light) 100%
+  ) !important;
+}
+
+/* Login form styling */
+.login-ui .login-dialog {
+  background: rgba(26, 26, 46, 0.95) !important;
+  border: 1px solid var(--cyberlab-primary) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 0 30px var(--cyberlab-glow) !important;
+}
+
+/* Form inputs */
+.login-ui input[type="text"],
+.login-ui input[type="password"] {
+  background: var(--cyberlab-bg-dark) !important;
+  border: 1px solid var(--cyberlab-primary) !important;
+  color: var(--cyberlab-primary) !important;
+  border-radius: 4px !important;
+  padding: 10px 12px !important;
+}
+
+.login-ui input[type="text"]::placeholder,
+.login-ui input[type="password"]::placeholder {
+  color: var(--cyberlab-text-muted) !important;
+}
+
+.login-ui input[type="text"]:focus,
+.login-ui input[type="password"]:focus {
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.5) !important;
+  outline: none !important;
+}
+
+/* Login button */
+.login-ui button[type="submit"],
+.login-ui input[type="submit"],
+.login-ui .login-button {
+  background: linear-gradient(
+    90deg,
+    var(--cyberlab-primary),
+    var(--cyberlab-secondary)
+  ) !important;
+  color: var(--cyberlab-bg-dark) !important;
+  border: none !important;
+  border-radius: 4px !important;
+  font-weight: bold !important;
+  text-transform: uppercase !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+  padding: 12px 24px !important;
+}
+
+.login-ui button[type="submit"]:hover,
+.login-ui input[type="submit"]:hover,
+.login-ui .login-button:hover {
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.6) !important;
+  transform: translateY(-2px) !important;
+}
+
+/* Labels */
+.login-ui label {
+  color: var(--cyberlab-text-muted) !important;
+}
+
+/* Error messages */
+.login-ui .error,
+.login-ui .login-error {
+  color: #ff4444 !important;
+  background: rgba(255, 68, 68, 0.1) !important;
+  border: 1px solid #ff4444 !important;
+  border-radius: 4px !important;
+  padding: 10px !important;
+}
+
+/* ===== CLIENT/SESSION VIEW ===== */
+
+/* Main application header */
+.header,
+.guac-header,
+.menu-header {
+  background: linear-gradient(
+    90deg,
+    var(--cyberlab-bg-medium),
+    var(--cyberlab-bg-light)
+  ) !important;
+  border-bottom: 1px solid var(--cyberlab-primary) !important;
+}
+
+/* Menu bar */
+.menu,
+.guac-menu {
+  background: linear-gradient(
+    90deg,
+    var(--cyberlab-bg-medium),
+    var(--cyberlab-bg-light)
+  ) !important;
+  border-bottom: 1px solid var(--cyberlab-primary) !important;
+}
+
+/* Menu items */
+.menu .menu-item,
+.guac-menu .menu-item,
+.navigation-item {
+  color: var(--cyberlab-primary) !important;
+  transition: background 0.2s ease !important;
+}
+
+.menu .menu-item:hover,
+.guac-menu .menu-item:hover,
+.navigation-item:hover {
+  background: rgba(0, 255, 136, 0.2) !important;
+}
+
+/* Hide Guacamole text in header - replace with custom */
+.header .title,
+.header .logo-text,
+.guac-menu .title {
+  visibility: hidden !important;
+  position: relative !important;
+}
+
+.header .title::after,
+.guac-menu .title::after {
+  content: "CyberLab AttackBox" !important;
+  visibility: visible !important;
+  position: absolute !important;
+  left: 0 !important;
+  color: var(--cyberlab-primary) !important;
+  font-weight: bold !important;
+}
+
+/* ===== CONNECTION LIST / HOME ===== */
+
+/* Connection group container */
+.connection-group,
+.home-connection-group {
+  background: var(--cyberlab-bg-dark) !important;
+}
+
+/* Connection list */
+.connection-list .connection,
+.recent-connections .connection,
+.connection-item {
+  background: rgba(26, 26, 46, 0.8) !important;
+  border: 1px solid var(--cyberlab-border) !important;
+  color: var(--cyberlab-text) !important;
+  border-radius: 4px !important;
+  margin: 4px 0 !important;
+  transition: all 0.2s ease !important;
+}
+
+.connection-list .connection:hover,
+.recent-connections .connection:hover,
+.connection-item:hover {
+  border-color: var(--cyberlab-primary) !important;
+  box-shadow: 0 0 10px var(--cyberlab-glow) !important;
+  transform: translateX(4px) !important;
+}
+
+/* Connection name */
+.connection-list .name,
+.connection-item .name {
+  color: var(--cyberlab-text) !important;
+}
+
+/* ===== SETTINGS PAGE ===== */
+
+.settings-container,
+.user-menu {
+  background: var(--cyberlab-bg-medium) !important;
+}
+
+.settings-section {
+  border-color: var(--cyberlab-border) !important;
+}
+
+.settings-section h3 {
+  color: var(--cyberlab-primary) !important;
+}
+
+/* Form elements in settings */
+.settings-container input,
+.settings-container select {
+  background: var(--cyberlab-bg-dark) !important;
+  border: 1px solid var(--cyberlab-border) !important;
+  color: var(--cyberlab-text) !important;
+  border-radius: 4px !important;
+}
+
+.settings-container input:focus,
+.settings-container select:focus {
+  border-color: var(--cyberlab-primary) !important;
+  box-shadow: 0 0 5px var(--cyberlab-glow) !important;
+}
+
+/* Buttons */
+.settings-container button,
+.action-button {
+  background: linear-gradient(
+    90deg,
+    var(--cyberlab-primary),
+    var(--cyberlab-secondary)
+  ) !important;
+  color: var(--cyberlab-bg-dark) !important;
+  border: none !important;
+  border-radius: 4px !important;
+  font-weight: bold !important;
+}
+
+/* ===== SCROLLBARS ===== */
+
+::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--cyberlab-bg-dark) !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--cyberlab-primary) !important;
+  border-radius: 4px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cyberlab-secondary) !important;
+}
+
+/* ===== LOADING SCREEN ===== */
+
+.loading,
+.connecting {
+  background: var(--cyberlab-bg-dark) !important;
+}
+
+.loading .spinner,
+.connecting .spinner {
+  border-color: var(--cyberlab-primary) transparent transparent transparent !important;
+}
+
+.loading .message,
+.connecting .message {
+  color: var(--cyberlab-text) !important;
+}
+
+/* ===== MODAL DIALOGS ===== */
+
+.modal,
+.dialog {
+  background: var(--cyberlab-bg-medium) !important;
+  border: 1px solid var(--cyberlab-primary) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 0 30px var(--cyberlab-glow) !important;
+}
+
+.modal-header,
+.dialog-header {
+  background: var(--cyberlab-bg-light) !important;
+  border-bottom: 1px solid var(--cyberlab-primary) !important;
+}
+
+.modal-title,
+.dialog-title {
+  color: var(--cyberlab-primary) !important;
+}
+
+/* ===== NOTIFICATION/TOAST ===== */
+
+.notification,
+.toast {
+  background: var(--cyberlab-bg-medium) !important;
+  border: 1px solid var(--cyberlab-primary) !important;
+  color: var(--cyberlab-text) !important;
+  border-radius: 4px !important;
+}
+
+/* ===== TOOLBAR (In-session) ===== */
+
+.toolbar,
+.guac-toolbar {
+  background: rgba(26, 26, 46, 0.95) !important;
+  border: 1px solid var(--cyberlab-primary) !important;
+}
+
+.toolbar button,
+.guac-toolbar button {
+  color: var(--cyberlab-primary) !important;
+}
+
+.toolbar button:hover,
+.guac-toolbar button:hover {
+  background: rgba(0, 255, 136, 0.2) !important;
+}
+
+/* ===== KEYBOARD/MOUSE STATUS ===== */
+
+.keyboard-status,
+.mouse-status {
+  color: var(--cyberlab-text-muted) !important;
+}
+
+/* ===== DISCONNECT SCREEN ===== */
+
+.disconnected,
+.client-error {
+  background: var(--cyberlab-bg-dark) !important;
+}
+
+.disconnected .message,
+.client-error .message {
+  color: var(--cyberlab-text) !important;
+}
+
+.disconnected .reconnect-button,
+.client-error .reconnect-button {
+  background: linear-gradient(
+    90deg,
+    var(--cyberlab-primary),
+    var(--cyberlab-secondary)
+  ) !important;
+  color: var(--cyberlab-bg-dark) !important;
+  border: none !important;
+  border-radius: 4px !important;
+}

@@ -1,0 +1,13 @@
+{
+  "guacamoleVersion": "*",
+  "name": "CyberLab Branding",
+  "namespace": "cyberlab-branding",
+  "html": {
+    "HEAD": "branding/head.html"
+  },
+  "css": ["branding/style.css"],
+  "translations": ["branding/translations/en.json"],
+  "resources": {
+    "images/logo.png": "branding/images/logo.png"
+  }
+}

@@ -1,0 +1,56 @@
+---
+# Guacamole custom branding deployment tasks
+# Removes all Apache Guacamole branding and applies CyberLab theme
+
+- name: Create branding extension build directory
+  ansible.builtin.file:
+    path: "{{ guacamole_base_dir }}/branding-build"
+    state: directory
+    owner: "{{ guacamole_user }}"
+    group: "{{ guacamole_user }}"
+    mode: "0755"
+
+- name: Copy branding extension files
+  ansible.builtin.copy:
+    src: branding-extension/
+    dest: "{{ guacamole_base_dir }}/branding-build/"
+    owner: "{{ guacamole_user }}"
+    group: "{{ guacamole_user }}"
+    mode: "0644"
+  register: branding_files_copied
+
+- name: Copy custom logo if provided
+  ansible.builtin.copy:
+    src: "{{ guacamole_custom_logo }}"
+    dest: "{{ guacamole_base_dir }}/branding-build/branding/images/logo.png"
+    owner: "{{ guacamole_user }}"
+    group: "{{ guacamole_user }}"
+    mode: "0644"
+  when: guacamole_custom_logo is defined and guacamole_custom_logo != ""
+
+- name: Ensure extensions directory exists
+  ansible.builtin.file:
+    path: "{{ guacamole_base_dir }}/extensions"
+    state: directory
+    owner: "{{ guacamole_user }}"
+    group: "{{ guacamole_user }}"
+    mode: "0755"
+
+- name: Create branding extension JAR
+  ansible.builtin.command:
+    cmd: jar -cvf {{ guacamole_base_dir }}/extensions/cyberlab-branding.jar -C {{ guacamole_base_dir }}/branding-build .
+  changed_when: branding_files_copied.changed
+  notify: restart guacamole
+
+- name: Set permissions on branding extension
+  ansible.builtin.file:
+    path: "{{ guacamole_base_dir }}/extensions/cyberlab-branding.jar"
+    owner: "{{ guacamole_user }}"
+    group: "{{ guacamole_user }}"
+    mode: "0644"
+
+- name: Clean up branding build directory
+  ansible.builtin.file:
+    path: "{{ guacamole_base_dir }}/branding-build"
+    state: absent
+  when: guacamole_cleanup_build_files | default(true)

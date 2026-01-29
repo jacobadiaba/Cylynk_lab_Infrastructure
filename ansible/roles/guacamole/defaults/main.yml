@@ -30,3 +30,13 @@ domain_name: ""
 # Email address for Let's Encrypt notifications
 # Defaults to admin@<domain_name> if not specified
 # letsencrypt_email: "admin@example.com"
+# Custom branding configuration
+# Removes Apache Guacamole branding and applies CyberLab theme
+guacamole_branding_enabled: true
+
+# Path to custom logo file (optional)
+# If not set, uses placeholder. Recommended size: 200x80px PNG
+# guacamole_custom_logo: "/path/to/your/logo.png"
+
+# Whether to clean up build files after creating extension
+guacamole_cleanup_build_files: true

@@ -31,7 +31,7 @@
     state: directory
     owner: "{{ guacamole_user }}"
     group: "{{ guacamole_user }}"
-    mode: '0755'
+    mode: "0755"
 
 - name: Create Guacamole subdirectories
   ansible.builtin.file:
@@ -39,9 +39,9 @@
     state: directory
     owner: "{{ guacamole_user }}"
     group: "{{ guacamole_user }}"
-    mode: '0755'
+    mode: "0755"
   loop:
     - initdb
     - nginx
     - ssl
-
+    - extensions

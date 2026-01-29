@@ -16,3 +16,7 @@
 - name: Include management scripts tasks
   ansible.builtin.include_tasks: scripts.yml
 
+- name: Include custom branding tasks
+  ansible.builtin.include_tasks: branding.yml
+  when: guacamole_branding_enabled | default(true)
+  tags: [guacamole, branding]

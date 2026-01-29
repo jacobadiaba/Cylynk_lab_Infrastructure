@@ -1,0 +1,60 @@
+{
+  "APP": {
+    "NAME": "CyberLab AttackBox",
+    "TITLE": "CyberLab AttackBox"
+  },
+  "LOGIN": {
+    "TITLE": "CyberLab AttackBox",
+    "USERNAME_PLACEHOLDER": "Username",
+    "PASSWORD_PLACEHOLDER": "Password",
+    "LOGIN": "Launch Session",
+    "LOGIN_IN_PROGRESS": "Connecting to AttackBox..."
+  },
+  "HOME": {
+    "TITLE": "CyberLab Dashboard",
+    "CONNECTIONS": "My Sessions",
+    "RECENT_CONNECTIONS": "Recent Sessions",
+    "NO_RECENT_CONNECTIONS": "No recent sessions",
+    "CONNECTION_GROUPS": "Session Groups",
+    "ALL_CONNECTIONS": "All Sessions"
+  },
+  "CLIENT": {
+    "TITLE": "AttackBox Session",
+    "DISCONNECT": "End Session",
+    "RECONNECT": "Reconnect",
+    "CONNECTING": "Connecting to AttackBox...",
+    "DISCONNECTED": "Session Ended",
+    "ERROR": "Connection Error",
+    "CLIPBOARD": "Clipboard",
+    "KEYBOARD": "Keyboard",
+    "MOUSE": "Mouse"
+  },
+  "SETTINGS": {
+    "TITLE": "Preferences",
+    "SECTION_DISPLAY": "Display",
+    "SECTION_INPUT": "Input",
+    "SECTION_MOUSE": "Mouse",
+    "SECTION_AUDIO": "Audio"
+  },
+  "MENU": {
+    "HOME": "Dashboard",
+    "SETTINGS": "Preferences",
+    "LOGOUT": "Sign Out",
+    "DISCONNECT": "End Session"
+  },
+  "MANAGE": {
+    "TITLE": "Administration",
+    "CONNECTIONS": "Sessions",
+    "USERS": "Users",
+    "GROUPS": "Groups",
+    "HISTORY": "Session History"
+  },
+  "DIALOG": {
+    "OK": "OK",
+    "CANCEL": "Cancel",
+    "CLOSE": "Close",
+    "SAVE": "Save",
+    "DELETE": "Delete",
+    "CONFIRM": "Confirm"
+  }
+}
