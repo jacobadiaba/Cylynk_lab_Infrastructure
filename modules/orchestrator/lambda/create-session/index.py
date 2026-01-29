@@ -675,6 +675,12 @@ def handler(event, context):
                 logger.info(f"[STALE_SESSION_CHECK] Auto-terminating stale session and creating a new one...")
                 cleanup_stale_session(session, sessions_db, pool_db, reason="stale_guacamole_logout")
                 logger.info(f"[STALE_SESSION_CHECK] Proceeding to create new session for user {student_id}")
+                
+                # Small delay to ensure Guacamole cleanup completes before creating new connection
+                # This prevents "disconnected" errors when reusing the same instance
+                import time
+                time.sleep(1.0)
+                logger.info(f"[STALE_SESSION_CHECK] Delay complete, creating new session")
         
         # Generate new session
         session_id = generate_session_id()
