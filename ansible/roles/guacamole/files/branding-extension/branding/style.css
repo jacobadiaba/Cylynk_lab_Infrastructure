@@ -5,28 +5,69 @@
 
 /* ===== HIDE GUACAMOLE BRANDING ===== */
 
-/* Hide Apache Guacamole logo and replace with custom */
-.login-ui .logo {
-  background-image: url("app/ext/cyberlab-branding/images/logo.png") !important;
-  background-size: contain !important;
-  background-repeat: no-repeat !important;
-  background-position: center !important;
-  width: 200px !important;
-  height: 80px !important;
+/* Hide the Apache Guacamole title completely */
+.login-ui .title,
+.login-ui h1,
+.login-ui .app-title,
+.login-ui .login-ui-title,
+h1.title,
+.title-logo,
+.login-title {
+    font-size: 0 !important;
+    color: transparent !important;
+    visibility: hidden !important;
+    display: none !important;
 }
 
-/* Hide "Apache Guacamole" title text */
+/* Replace with custom title using pseudo-element on container */
+.login-ui .login-dialog::before {
+    content: "CyberLab AttackBox" !important;
+    display: block !important;
+    text-align: center !important;
+    font-size: 28px !important;
+    font-weight: bold !important;
+    color: #00ff88 !important;
+    margin-bottom: 20px !important;
+    padding-top: 20px !important;
+    letter-spacing: 2px !important;
+    text-shadow: 0 0 10px rgba(0, 255, 136, 0.5) !important;
+}
+
+/* Hide Apache Guacamole logo and replace with custom */
+.login-ui .logo {
+    background-image: url('app/ext/cyberlab-branding/images/logo.png') !important;
+    background-size: contain !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    width: 200px !important;
+    height: 80px !important;
+}
+
+/* Ensure logo text/title is hidden */
+.login-ui .logo *,
 .login-ui .logo::before,
 .login-ui .logo::after {
-  display: none !important;
+    display: none !important;
+    visibility: hidden !important;
+    font-size: 0 !important;
+}
+
+/* Hide ALL text elements that might contain "Apache" or "Guacamole" */
+[class*="title"]:not(.login-dialog)::before,
+[class*="brand"],
+[class*="apache"],
+[class*="guac"]:not(.guac-menu):not(.guac-viewport):not([class*="input"]) {
+    visibility: hidden !important;
 }
 
 /* Hide version info everywhere */
 .login-ui .version,
 .version-dialog,
 .about-dialog,
-.about-version {
-  display: none !important;
+.about-version,
+.app-version,
+.guac-version {
+    display: none !important;
 }
 
 /* Hide license/credits links */
@@ -36,21 +77,21 @@
 a[href*="LICENSE"],
 .credits,
 .about-credits {
-  display: none !important;
+    display: none !important;
 }
 
 /* Hide "Powered by" or footer text */
 .login-ui footer,
 .login-ui .footer,
 .powered-by {
-  display: none !important;
+    display: none !important;
 }
 
 /* Hide Guacamole text in navigation/menus */
 .guac-menu .header-title,
 .header .guac-title,
 .navbar-brand .guacamole-text {
-  visibility: hidden !important;
+    visibility: hidden !important;
 }
 
 /* ===== CUSTOM THEME (CYBERPUNK) ===== */
