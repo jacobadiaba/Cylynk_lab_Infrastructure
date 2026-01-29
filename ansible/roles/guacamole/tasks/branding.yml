@@ -36,10 +36,18 @@
     group: "{{ guacamole_user }}"
     mode: "0755"
 
-- name: Create branding extension JAR
-  ansible.builtin.command:
-    cmd: jar -cvf {{ guacamole_base_dir }}/extensions/cyberlab-branding.jar -C {{ guacamole_base_dir }}/branding-build .
-  changed_when: branding_files_copied.changed
+- name: Ensure zip is installed
+  ansible.builtin.apt:
+    name: zip
+    state: present
+  become: true
+
+- name: Create branding extension JAR (ZIP format)
+  ansible.builtin.shell: |
+    cd {{ guacamole_base_dir }}/branding-build && zip -r {{ guacamole_base_dir }}/extensions/cyberlab-branding.jar .
+  args:
+    creates: "{{ guacamole_base_dir }}/extensions/cyberlab-branding.jar"
+  when: branding_files_copied.changed or not (guacamole_base_dir ~ '/extensions/cyberlab-branding.jar') is file
   notify: restart guacamole
 
 - name: Set permissions on branding extension
