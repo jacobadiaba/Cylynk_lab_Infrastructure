@@ -894,11 +894,10 @@ define(["jquery", "core/str"], function ($, Str) {
 
       this.$button.on("click", function (e) {
         e.preventDefault();
-        if (self.hasActiveSession && self.activeSessionUrl) {
-          window.open(self.activeSessionUrl, "_blank", "noopener");
-        } else {
-          self.launch();
-        }
+        // Always call launch() - the API will return existing session with fresh URL
+        // This handles the case where user logged out of Guacamole (token invalidated)
+        // but the session is still "active" in the backend
+        self.launch();
       });
 
       this.$terminateButton.on("click", function (e) {
