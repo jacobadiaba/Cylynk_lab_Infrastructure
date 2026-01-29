@@ -35,7 +35,7 @@ output "guacamole_private_ip" {
 
 output "guacamole_url" {
   description = "Guacamole web interface URL"
-  value       = "https://${var.guacamole_domain_name}/guacamole"
+  value       = "https://${var.guacamole_domain_name}"
 }
 
 # =============================================================================
