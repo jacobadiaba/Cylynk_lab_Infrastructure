@@ -5,7 +5,7 @@
     document.createElement("link");
   link.rel = "icon";
   link.type = "image/png";
-  link.href = "app/ext/cyberlab-branding/images/logo.png";
+  link.href = "app/ext/cyberlab-branding/favicon.ico";
   document.head.appendChild(link);
 
   // Set title
