@@ -1,12 +1,35 @@
 (function () {
-  // Set favicon
-  var link =
-    document.querySelector('link[rel="icon"]') ||
-    document.createElement("link");
-  link.rel = "icon";
-  link.type = "image/png";
-  link.href = "app/ext/cyberlab-branding/favicon.ico";
-  document.head.appendChild(link);
+  // Set favicon more robustly
+  function setFavicon() {
+    var head = document.head || document.getElementsByTagName("head")[0];
+    var iconPath = "app/ext/cyberlab-branding/images/favicon.ico";
+
+    // Remove existing favicons
+    var existingIcons = document.querySelectorAll(
+      'link[rel="icon"], link[rel="shortcut icon"]',
+    );
+    existingIcons.forEach(function (icon) {
+      icon.parentNode.removeChild(icon);
+    });
+
+    // Create new icon links
+    var icon = document.createElement("link");
+    icon.rel = "icon";
+    icon.type = "image/x-icon";
+    icon.href = iconPath;
+    head.appendChild(icon);
+
+    var shortcut = document.createElement("link");
+    shortcut.rel = "shortcut icon";
+    shortcut.type = "image/x-icon";
+    shortcut.href = iconPath;
+    head.appendChild(shortcut);
+  }
+
+  setFavicon();
+
+  // Re-apply after a short delay and on DOM changes to fight off default resets
+  setTimeout(setFavicon, 1000);
 
   // Set title
   document.title = "CyberLab AttackBox";

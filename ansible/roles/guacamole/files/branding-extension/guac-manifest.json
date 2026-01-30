@@ -8,6 +8,6 @@
   "translations": ["branding/translations/en.json"],
   "resources": {
     "images/logo.png": "branding/images/logo.png",
-    "favicon.ico": "branding/images/favicon.ico"
+    "images/favicon.ico": "branding/images/favicon.ico"
   }
 }
