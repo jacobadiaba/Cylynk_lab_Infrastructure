@@ -4,7 +4,6 @@
   "namespace": "cyberlab-branding",
   "css": ["branding/style.css"],
   "resources": {
-    "images/logo.png": "branding/images/logo.png",
-    "favicon.ico": "branding/images/favicon.ico"
+    "images/logo.png": "branding/images/logo.png"
   }
 }
