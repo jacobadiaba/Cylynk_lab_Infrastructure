@@ -2,10 +2,8 @@
   "guacamoleVersion": "1.0.0",
   "name": "CyberLab Branding",
   "namespace": "cyberlab-branding",
-  "html": {
-    "HEAD": "branding/head.html"
-  },
   "css": ["branding/style.css"],
+  "javascript": ["branding/script.js"],
   "resources": {
     "images/logo.png": "branding/images/logo.png"
   }
