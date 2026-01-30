@@ -43,9 +43,9 @@ services:
       POSTGRES_USER: guacamole_user
       POSTGRES_PASSWORD: ${GUACAMOLE_DB_PASSWORD}
       POSTGRES_AUTO_CREATE_ACCOUNTS: "true"
-      GUACAMOLE_HOME: /etc/guacamole
     volumes:
-      - ./extensions:/etc/guacamole/extensions:ro
+      - ./extensions:/home/guacamole/.guacamole/extensions:ro
+      - ./recordings:/var/lib/guacamole/recordings
     networks:
       - guacamole_net
     depends_on:
