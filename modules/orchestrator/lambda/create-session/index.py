@@ -419,6 +419,28 @@ def create_guacamole_connection(
             password=GUACAMOLE_ADMIN_PASS,
         )
         
+        # CLEANUP STALE CONNECTIONS:
+        # Before creating a new connection, search for any existing connections pointing to the same IP.
+        # This prevents Guacamole from having multiple connections to the same AttackBox, 
+        # which can cause "Disconnected" errors due to protocol-level session locking.
+        logger.info(f"[GUACAMOLE_CLEANUP] Searching for stale connections to IP {instance_ip}...")
+        try:
+            stale_ids = guac.find_connections_by_hostname(instance_ip)
+            if stale_ids:
+                logger.info(f"[GUACAMOLE_CLEANUP] Found {len(stale_ids)} stale connection(s): {stale_ids}")
+                for stale_id in stale_ids:
+                    # Kill active sessions for this stale connection
+                    guac.kill_active_sessions(stale_id)
+                    # Delete the connection
+                    if guac.delete_connection(stale_id):
+                        logger.info(f"[GUACAMOLE_CLEANUP] Deleted stale connection {stale_id}")
+                
+                # Small delay after cleanup to allow guacd to release the RDP lock
+                import time
+                time.sleep(2.0)
+        except Exception as e:
+            logger.warning(f"[GUACAMOLE_CLEANUP] Stale connection cleanup failed (non-blocking): {e}")
+
         # Create a unique connection name
         connection_name = f"AttackBox - {student_name} ({session_id[-8:]})"
         if course_id:
@@ -1012,7 +1034,8 @@ def handler(event, context):
                 # was recently released. Windows keeps disconnected sessions active for ~30 seconds.
                 import time
                 logger.info(f"Waiting for Guacamole connection and Windows RDP service to initialize before returning URL...")
-                time.sleep(5.0)  # Increased delay for Windows RDP reset (was 3.0s)
+                logger.info(f"Adding extra delay for protocol-level reset...")
+                time.sleep(8.0)  # Increased delay for Windows RDP reset (was 5.0s)
                 logger.info(f"Guacamole connection initialization delay complete")
             
             # Update session as ready

@@ -1123,6 +1123,41 @@ class GuacamoleClient:
             return True
         return False
     
+    def find_connections_by_hostname(self, hostname: str) -> list:
+        """
+        Find all connection identifiers that point to a specific hostname/IP.
+        
+        Args:
+            hostname: The IP or hostname to search for
+            
+        Returns:
+            List of connection identifiers
+        """
+        if not self.token:
+            if not self.authenticate():
+                return []
+        
+        try:
+            # Get all connections
+            result = self._make_request(
+                "GET",
+                f"/session/data/{self.data_source}/connections"
+            )
+            
+            if not result:
+                return []
+            
+            found_ids = []
+            for conn_id, conn_data in result.items():
+                params = conn_data.get("parameters", {})
+                if params.get("hostname") == hostname:
+                    found_ids.append(conn_id)
+            
+            return found_ids
+        except Exception as e:
+            logger.warning(f"Error finding connections by hostname: {e}")
+            return []
+
     def grant_connection_permission(self, username: str, connection_id: str) -> bool:
         """
         Grant a user permission to access a specific connection.

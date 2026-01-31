@@ -108,12 +108,50 @@
     }, 5000);
   }
 
+  // Auto-reconnect fail-safe
+  // If a disconnection happens very early, try to reconnect once automatically
+  var reconnectAttempts = 0;
+  var maxAutoReconnects = 1;
+  var loadTime = Date.now();
+
+  function autoReconnect() {
+    var disconnectedOverlay = document.querySelector(
+      ".guac-notification.disconnected",
+    );
+    if (disconnectedOverlay && reconnectAttempts < maxAutoReconnects) {
+      var timeSinceLoad = Date.now() - loadTime;
+      // Only auto-reconnect if it happened within 15 seconds of initial load
+      if (timeSinceLoad < 15000) {
+        var reconnectBtn = disconnectedOverlay.querySelector(
+          ".reconnect-button, button:nth-child(2)",
+        );
+        if (reconnectBtn) {
+          console.log(
+            "CyberLab: Early disconnection detected, attempting auto-reconnect...",
+          );
+          reconnectAttempts++;
+          reconnectBtn.click();
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   window.addEventListener("hashchange", handleLogoutFlow);
 
   // Also check on initial load and when DOM changes (for the disconnected overlay)
   document.addEventListener("DOMContentLoaded", function () {
     handleLogoutFlow();
-    var observer = new MutationObserver(handleLogoutFlow);
+    var observer = new MutationObserver(function (mutations) {
+      // 1. Check for logout flow
+      handleLogoutFlow();
+
+      // 2. Check for auto-reconnect (only if not already rendering end screen)
+      if (!window.location.hash.startsWith("#/login/")) {
+        autoReconnect();
+      }
+    });
     observer.observe(document.body, { childList: true, subtree: true });
   });
 
