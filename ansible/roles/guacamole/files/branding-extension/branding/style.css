@@ -442,23 +442,38 @@ a[href*="LICENSE"],
 /* ===== DISCONNECT SCREEN ===== */
 
 .disconnected,
-.client-error {
+.client-error,
+.guac-notification.disconnected {
   background: var(--cyberlab-bg-dark) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 .disconnected .message,
 .client-error .message {
   color: var(--cyberlab-text) !important;
+  font-size: 24px !important;
+  margin-bottom: 30px !important;
 }
 
-.disconnected .reconnect-button,
-.client-error .reconnect-button {
-  background: linear-gradient(
-    90deg,
-    var(--cyberlab-primary),
-    var(--cyberlab-secondary)
-  ) !important;
-  color: var(--cyberlab-bg-dark) !important;
-  border: none !important;
-  border-radius: 4px !important;
+/* Hide the default Guacamole buttons on the disconnect screen */
+.disconnected .buttons,
+.client-error .buttons,
+.guac-notification.disconnected .buttons {
+  display: none !important;
+}
+
+/* Add custom "Return to Moodle" text using pseudo-element */
+.disconnected::after,
+.client-error::after {
+  content: "Your session has ended. Please close this tab and return to Moodle to launch a new session." !important;
+  display: block !important;
+  color: var(--cyberlab-primary) !important;
+  max-width: 400px !important;
+  text-align: center !important;
+  margin-top: 20px !important;
+  line-height: 1.5 !important;
+  font-weight: bold !important;
 }
