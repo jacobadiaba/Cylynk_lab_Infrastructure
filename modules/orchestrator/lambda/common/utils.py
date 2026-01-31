@@ -1012,7 +1012,7 @@ class GuacamoleClient:
     
     def create_user(self, username: str, password: str) -> bool:
         """
-        Create a new Guacamole user.
+        Create a new Guacamole user or update password if exists.
         
         Args:
             username: Username for the new user
@@ -1039,6 +1039,7 @@ class GuacamoleClient:
             }
         }
         
+        # Try to create the user
         result = self._make_request(
             "POST",
             f"/session/data/{self.data_source}/users",
@@ -1048,6 +1049,22 @@ class GuacamoleClient:
         if result is not None:
             logger.info(f"Created Guacamole user: {username}")
             return True
+        
+        # If POST failed, maybe user exists? Try to update password instead
+        logger.info(f"User {username} might already exist, attempting to update password...")
+        update_data = {
+            "password": password
+        }
+        update_result = self._make_request(
+            "PUT",
+            f"/session/data/{self.data_source}/users/{username}",
+            data=update_data
+        )
+        
+        if update_result is not None:
+            logger.info(f"Updated password for existing Guacamole user: {username}")
+            return True
+            
         return False
     
     def kill_active_sessions(self, connection_id: str) -> int:
@@ -1219,10 +1236,18 @@ class GuacamoleClient:
         logger.info(f"Guacamole user/permission propagation delay complete")
         
         # Authenticate as the new user and get their token
-        user_token = self.authenticate_user(username, password)
+        # Retry up to 3 times as Guacamole might take a moment to propagate
+        user_token = None
+        for i in range(3):
+            user_token = self.authenticate_user(username, password)
+            if user_token:
+                break
+            logger.info(f"Authentication attempt {i+1} for {username} failed, retrying in 1s...")
+            time.sleep(1.0)
+            
         if not user_token:
-            logger.error(f"Failed to authenticate as session user {username}")
-            self.delete_user(username)
+            logger.error(f"Failed to authenticate as session user {username} after retries")
+            # Don't delete the user here, it might be useful for debugging or next attempt
             return None
         
         # Generate the URL with the user's token

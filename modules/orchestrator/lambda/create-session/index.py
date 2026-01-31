@@ -156,56 +156,24 @@ def check_guacamole_session_valid(connection_id: str, session_user: str = None, 
             timeout=3,  # Short timeout to avoid blocking
         )
         
-        # Check if there are active connections
-        activity = guac.get_connection_activity(connection_id)
-        logger.info(f"[STALE_SESSION_CHECK] Guacamole activity response: {activity}")
+        # Session is valid if we can still use it.
+        # Even if there's no active connection, we can regenerate access
+        # as long as the connection exists in Guacamole.
         
-        has_active_connection = activity and activity.get("active", False)
-        
-        # If session user is provided, verify it can still authenticate
-        # This catches cases where user logged out and session user was deleted
-        session_user_valid = True
-        if session_user and session_id and student_id:
-            try:
-                # Generate the expected password using the same algorithm as create_session_user_and_get_url
-                import hashlib
-                expected_password = hashlib.sha256(f"{session_id}:{student_id}:secret".encode()).hexdigest()[:16]
-                
-                # Try to authenticate as the session user
-                # If this fails, the user was deleted (logged out) and session is stale
-                logger.info(f"[STALE_SESSION_CHECK] Verifying session user {session_user} can still authenticate...")
-                user_token = guac.authenticate_user(session_user, expected_password)
-                
-                if not user_token:
-                    logger.info(f"[STALE_SESSION_CHECK] Session user {session_user} CANNOT authenticate - user was deleted or logged out")
-                    session_user_valid = False
-                else:
-                    logger.info(f"[STALE_SESSION_CHECK] Session user {session_user} CAN authenticate - user still exists")
-            except Exception as e:
-                logger.warning(f"[STALE_SESSION_CHECK] Error verifying session user authentication: {e} - assuming invalid")
-                session_user_valid = False
-        elif session_user:
-            # We have session_user but not session_id/student_id - can't verify password
-            # If there's no active connection, assume stale
-            if not has_active_connection:
-                logger.info(f"[STALE_SESSION_CHECK] No active connection and cannot verify session user - assuming stale")
-                session_user_valid = False
-        
-        # Session is valid only if:
-        # 1. There's an active connection, AND
-        # 2. If session_user provided, it should be valid (or we don't have one to check)
-        is_valid = has_active_connection and session_user_valid
-        
-        if is_valid:
-            logger.info(f"[STALE_SESSION_CHECK] Session IS valid - user is actively connected and session user is valid")
-        else:
-            if not has_active_connection:
-                logger.info(f"[STALE_SESSION_CHECK] Session is STALE - no active connection found")
-            elif not session_user_valid:
-                logger.info(f"[STALE_SESSION_CHECK] Session is STALE - session user invalid or cannot authenticate (user logged out)")
-        
-        return is_valid
-        
+        # Check if the connection exists in Guacamole
+        try:
+            # get_connection_activity returns None if connection doesn't exist or error
+            activity = guac.get_connection_activity(connection_id)
+            if activity is not None:
+                logger.info(f"[STALE_SESSION_CHECK] Guacamole connection {connection_id} exists. Session is reusable.")
+                return True
+            else:
+                logger.info(f"[STALE_SESSION_CHECK] Guacamole connection {connection_id} NOT found or error. Session is stale.")
+                return False
+        except Exception as e:
+            logger.warning(f"[STALE_SESSION_CHECK] Error checking connection existence: {e}")
+            return False
+            
     except Exception as e:
         logger.warning(f"[STALE_SESSION_CHECK] Error checking Guacamole session validity: {e} - assuming NOT valid")
         # On error, assume NOT valid to allow session recreation
@@ -682,46 +650,33 @@ def handler(event, context):
                         existing_connection_info=connection_info,
                     )
                     
-                    if fresh_connection_info:
-                        # Update the session with the new connection info
-                        sessions_db.update_item(
-                            {"session_id": session["session_id"]},
-                            {
-                                "connection_info": fresh_connection_info,
-                                "updated_at": get_current_timestamp(),
-                            }
-                        )
-                        logger.info(f"[STALE_SESSION_CHECK] Regenerated session access, returning refreshed session")
-                        return success_response(
-                            {
-                                "session_id": session["session_id"],
-                                "status": session["status"],
-                                "instance_id": session.get("instance_id"),
-                                "connection_info": fresh_connection_info,
-                                "created_at": session.get("created_at"),
-                                "expires_at": session.get("expires_at"),
-                                "reused": True,
-                                "access_refreshed": True,
-                            },
-                            "Existing session found (access refreshed)"
-                        )
-                    else:
-                        logger.warning(f"[STALE_SESSION_CHECK] Failed to regenerate session access")
-                
-                # Fallback: return existing session as-is (might not work if token is invalid)
-                logger.info(f"[STALE_SESSION_CHECK] Returning existing session as-is")
-                return success_response(
-                    {
-                        "session_id": session["session_id"],
-                        "status": session["status"],
-                        "instance_id": session.get("instance_id"),
-                        "connection_info": connection_info,
-                        "created_at": session.get("created_at"),
-                        "expires_at": session.get("expires_at"),
-                        "reused": True,
-                    },
-                    "Existing session found"
-                )
+                if fresh_connection_info:
+                    # Update the session with the new connection info
+                    sessions_db.update_item(
+                        {"session_id": session["session_id"]},
+                        {
+                            "connection_info": fresh_connection_info,
+                            "updated_at": get_current_timestamp(),
+                        }
+                    )
+                    logger.info(f"[STALE_SESSION_CHECK] Regenerated session access, returning refreshed session")
+                    return success_response(
+                        {
+                            "session_id": session["session_id"],
+                            "status": session["status"],
+                            "instance_id": session.get("instance_id"),
+                            "connection_info": fresh_connection_info,
+                            "created_at": session.get("created_at"),
+                            "expires_at": session.get("expires_at"),
+                            "reused": True,
+                            "access_refreshed": True,
+                        },
+                        "Existing session found (access refreshed)"
+                    )
+                else:
+                    logger.warning(f"[STALE_SESSION_CHECK] Failed to regenerate session access - cleaning up and creating NEW session")
+                    cleanup_stale_session(session, sessions_db, pool_db, reason="stale_access_regeneration_failed")
+                    # Fall through to create a new session
             else:
                 # Session is NOT valid - user logged out of Guacamole or session user was deleted
                 # Clean up the stale session and continue to create a new one
